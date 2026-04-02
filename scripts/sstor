@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVER_CMD=""
+KILL=false
+END=false
+DELETE=false
+LIST=false
+MERGE=false
+DERGE=false
+PROJECT=""
+INSTANCE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --server=*) SERVER_CMD="${1#--server=}" ;;
+    -s|--server) SERVER_CMD="$2"; shift ;;
+    --project=*) PROJECT="${1#--project=}" ;;
+    -p|--project) PROJECT="$2"; shift ;;
+    --instance=*) INSTANCE="${1#--instance=}" ;;
+    -i|--instance) INSTANCE="$2"; shift ;;
+    -k|--kill) KILL=true ;;
+    -e|--end) END=true ;;
+    -d|--delete) DELETE=true ;;
+    -l|--list) LIST=true ;;
+    -m|--merge) MERGE=true ;;
+    -g|--derge) DERGE=true ;;
+    -r|--reload)
+      set +u
+      source ~/.bash_profile
+      set -u
+      tmux source-file ~/.tmux.conf 2>/dev/null || true
+      echo "Configs reloaded"
+      exit 0
+      ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+  shift
+done
+
+# Infer project from current directory if not specified
+if [[ -z "$PROJECT" ]]; then
+  CURDIR="$(pwd)"
+  if [[ "$CURDIR" == *__worktrees/* ]]; then
+    # Inside a worktree: extract project and instance from path
+    PROJECT="$(basename "$(dirname "$CURDIR")")"
+    PROJECT="${PROJECT%__worktrees}"
+    if [[ -z "$INSTANCE" ]]; then
+      INSTANCE="$(basename "$CURDIR")"
+      INSTANCE="${INSTANCE#"${PROJECT}"-}"
+    fi
+  else
+    PROJECT="$(basename "$CURDIR")"
+  fi
+fi
+
+REPO_DIR="$HOME/dev/$PROJECT"
+
+if [[ ! -d "$REPO_DIR" ]]; then
+  echo "Directory not found: $REPO_DIR"
+  exit 1
+fi
+
+# Kill session and switch to next available
+if $KILL; then
+  if [[ -z "${TMUX:-}" ]]; then
+    echo "Not inside a tmux session"
+    exit 1
+  fi
+  if [[ -n "$INSTANCE" ]]; then
+    TARGET="${PROJECT}-${INSTANCE}"
+  else
+    TARGET=$(tmux display-message -p '#S')
+  fi
+  if ! tmux has-session -t "$TARGET" 2>/dev/null; then
+    echo "No session: $TARGET"
+    exit 1
+  fi
+  NEXT=$(tmux list-sessions -F '#S' | grep -v "^${TARGET}$" | head -1) || true
+  if [[ -z "$NEXT" ]]; then
+    echo "Cannot kill the only remaining session"
+    exit 1
+  fi
+  if [[ "$(tmux display-message -p '#S')" == "$TARGET" ]]; then
+    tmux switch-client -t "$NEXT"
+  fi
+  tmux kill-session -t "$TARGET"
+  exit 0
+fi
+
+# End session (like kill but allows killing the last session)
+if $END; then
+  if [[ -z "${TMUX:-}" ]]; then
+    echo "Not inside a tmux session"
+    exit 1
+  fi
+  if [[ -n "$INSTANCE" ]]; then
+    TARGET="${PROJECT}-${INSTANCE}"
+  else
+    TARGET=$(tmux display-message -p '#S')
+  fi
+  if ! tmux has-session -t "$TARGET" 2>/dev/null; then
+    echo "No session: $TARGET"
+    exit 1
+  fi
+  NEXT=$(tmux list-sessions -F '#S' | grep -v "^${TARGET}$" | head -1) || true
+  if [[ -n "$NEXT" ]] && [[ "$(tmux display-message -p '#S')" == "$TARGET" ]]; then
+    tmux switch-client -t "$NEXT"
+  fi
+  tmux kill-session -t "$TARGET"
+  exit 0
+fi
+
+# List all instances for this project
+if $LIST; then
+  WORKTREES_DIR="$HOME/dev/${PROJECT}__worktrees"
+  if [[ ! -d "$WORKTREES_DIR" ]]; then
+    echo "No instances for $PROJECT"
+    exit 0
+  fi
+  for dir in "$WORKTREES_DIR"/"${PROJECT}"-*/; do
+    [[ -d "$dir" ]] || continue
+    instance="${dir%/}"
+    instance="${instance##*/}"
+    instance="${instance#"${PROJECT}"-}"
+    session="${PROJECT}-${instance}"
+    if tmux has-session -t "$session" 2>/dev/null; then
+      echo "$instance (active)"
+    else
+      echo "$instance"
+    fi
+  done
+  exit 0
+fi
+
+# Merge instance branch into main project branch and switch to main session
+if $MERGE || $DERGE; then
+  if [[ -z "$INSTANCE" ]]; then
+    echo "Usage: sstor <instance> --merge|--derge"
+    exit 1
+  fi
+
+  SESSION="${PROJECT}-${INSTANCE}"
+  WORKTREE_DIR="$HOME/dev/${PROJECT}__worktrees/$SESSION"
+  BRANCH="$SESSION"
+
+  # Merge into main repo
+  git -C "$REPO_DIR" merge "$BRANCH"
+  echo "Merged $BRANCH into $(git -C "$REPO_DIR" branch --show-current)"
+
+  if $DERGE; then
+    # Kill tmux session if it exists
+    if tmux has-session -t "$SESSION" 2>/dev/null; then
+      if [[ -n "${TMUX:-}" ]] && [[ "$(tmux display-message -p '#S')" == "$SESSION" ]]; then
+        # Switch to main project session (create if needed) before killing
+        if ! tmux has-session -t "$PROJECT" 2>/dev/null; then
+          sstor --project="$PROJECT"
+        fi
+        tmux switch-client -t "$PROJECT"
+      fi
+      tmux kill-session -t "$SESSION"
+      echo "Killed session: $SESSION"
+    fi
+
+    # Remove worktree
+    if [[ -d "$WORKTREE_DIR" ]]; then
+      git -C "$REPO_DIR" worktree remove --force "$WORKTREE_DIR"
+      echo "Removed worktree: $WORKTREE_DIR"
+    fi
+
+    # Delete branch
+    if git -C "$REPO_DIR" rev-parse --verify "$BRANCH" &>/dev/null; then
+      git -C "$REPO_DIR" branch -D "$BRANCH"
+      echo "Deleted branch: $BRANCH"
+    fi
+  fi
+
+  # Switch to main project session
+  if [[ -n "${TMUX:-}" ]]; then
+    if ! tmux has-session -t "$PROJECT" 2>/dev/null; then
+      sstor --project="$PROJECT"
+    fi
+    tmux switch-client -t "$PROJECT"
+  fi
+
+  exit 0
+fi
+
+# Delete an instance: kill session, remove worktree, delete branch
+if $DELETE; then
+  # Infer instance from current tmux session name if not specified
+  if [[ -z "$INSTANCE" ]] && [[ -n "${TMUX:-}" ]]; then
+    CURRENT=$(tmux display-message -p '#S')
+    if [[ "$CURRENT" == "${PROJECT}"-* ]]; then
+      INSTANCE="${CURRENT#"${PROJECT}"-}"
+    fi
+  fi
+  if [[ -z "$INSTANCE" ]]; then
+    echo "Usage: sstor -i <instance> --delete"
+    exit 1
+  fi
+
+  SESSION="${PROJECT}-${INSTANCE}"
+  WORKTREE_DIR="$HOME/dev/${PROJECT}__worktrees/$SESSION"
+
+  # Remove worktree first (before killing session, since session may have pwd inside it)
+  if [[ -d "$WORKTREE_DIR" ]]; then
+    git -C "$REPO_DIR" worktree remove --force "$WORKTREE_DIR"
+    echo "Removed worktree: $WORKTREE_DIR"
+  fi
+
+  # Delete branch
+  if git -C "$REPO_DIR" rev-parse --verify "$SESSION" &>/dev/null; then
+    git -C "$REPO_DIR" branch -D "$SESSION"
+    echo "Deleted branch: $SESSION"
+  fi
+
+  # Kill tmux session if it exists
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    # If we're inside this session, switch away first
+    if [[ -n "${TMUX:-}" ]] && [[ "$(tmux display-message -p '#S')" == "$SESSION" ]]; then
+      NEXT=$(tmux list-sessions -F '#S' | grep -v "^${SESSION}$" | head -1) || true
+      if [[ -z "$NEXT" ]]; then
+        echo "Cannot delete the only remaining session"
+        exit 1
+      fi
+      tmux switch-client -t "$NEXT"
+    fi
+    tmux kill-session -t "$SESSION"
+    echo "Killed session: $SESSION"
+  fi
+
+  exit 0
+fi
+
+# Create/attach session
+if [[ -n "$INSTANCE" ]]; then
+  SESSION="${PROJECT}-${INSTANCE}"
+  WORKTREE_DIR="$HOME/dev/${PROJECT}__worktrees/$SESSION"
+
+  if [[ ! -d "$WORKTREE_DIR" ]]; then
+    mkdir -p "$HOME/dev/${PROJECT}__worktrees"
+    git -C "$REPO_DIR" worktree add "$WORKTREE_DIR" -b "$SESSION"
+  fi
+
+  START_DIR="$WORKTREE_DIR"
+else
+  SESSION="$PROJECT"
+  START_DIR="$REPO_DIR"
+fi
+
+# Attach if outside tmux, switch-client if inside tmux.
+tmux_go() {
+  local session="$1"
+  if [[ -n "${TMUX:-}" ]]; then
+    exec tmux switch-client -t "$session"
+  else
+    exec tmux attach -t "$session"
+  fi
+}
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  tmux_go "$SESSION"
+fi
+
+WINDOW=1
+
+# Window 1: console
+tmux new-session -d -s "$SESSION" -c "$START_DIR" -n console
+
+# Window 2: editor
+WINDOW=$((WINDOW + 1))
+tmux new-window  -t "$SESSION":$WINDOW -n editor -c "$START_DIR"
+tmux send-keys   -t "$SESSION":$WINDOW 'nvim .' C-m
+
+# Window 3: claude
+WINDOW=$((WINDOW + 1))
+tmux new-window  -t "$SESSION":$WINDOW -n claude -c "$START_DIR"
+tmux send-keys   -t "$SESSION":$WINDOW 'claude' C-m
+
+# Window 4: server (optional)
+if [[ -n "$SERVER_CMD" ]]; then
+  WINDOW=$((WINDOW + 1))
+  tmux new-window  -t "$SESSION":$WINDOW -n server -c "$START_DIR"
+  tmux send-keys   -t "$SESSION":$WINDOW "$SERVER_CMD" C-m
+fi
+
+tmux select-window -t "$SESSION":1
+tmux_go "$SESSION"

@@ -1,0 +1,22 @@
+[diff]
+	tool = nvimdiff
+	guitool = nvimdiff
+[merge]
+	tool = nvimdiff
+	conflictstyle = diff3
+[difftool]
+	prompt = false
+  tool = nvim -d
+[user]
+	name = John Bower
+	email = john@zode64.com
+[alias]
+	xpush = !git push $1 $2 && sh .git/hooks/post-push
+	accept-ours = "!f() { git checkout --ours -- \"${@:-.}\"; git add -u \"${@:-.}\"; }; f"
+	accept-theirs = "!f() { git checkout --theirs -- \"${@:-.}\"; git add -u \"${@:-.}\"; }; f"
+[core]
+	editor = nvim
+[mergetool "nvimdiff"]
+	layout = LOCAL,BASE,REMOTE / MERGED
+[grep]
+	excludesFile = /Users/john/.gitgrepignore

@@ -1,0 +1,5 @@
+{
+  "snippets.ultisnips.pythonPrompt": false,
+  "python.venvPath": ".",
+  "python.venv": ".venv"
+}
