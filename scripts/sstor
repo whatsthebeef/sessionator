@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SSTOR_DIR="$HOME/dev/sessionator"
+
 SERVER_CMD=""
 KILL=false
 END=false
@@ -8,6 +10,12 @@ DELETE=false
 LIST=false
 MERGE=false
 DERGE=false
+SYNC=false
+TASK=""
+BUG=""
+APP_KEY=""
+CLAIM_NEXT=false
+USE_TASK=false
 PROJECT=""
 INSTANCE=""
 
@@ -25,12 +33,55 @@ while [[ $# -gt 0 ]]; do
     -l|--list) LIST=true ;;
     -m|--merge) MERGE=true ;;
     -g|--derge) DERGE=true ;;
+    --sync) SYNC=true ;;
+    --task=*) TASK="${1#--task=}" ;;
+    --task) TASK="$2"; shift ;;
+    --claim-next) CLAIM_NEXT=true ;;
+    --bug=*) BUG="${1#--bug=}" ;;
+    --bug) BUG="$2"; shift ;;
+    --app-key=*) APP_KEY="${1#--app-key=}" ;;
+    --app-key) APP_KEY="$2"; shift ;;
     -r|--reload)
       set +u
       source ~/.bash_profile
       set -u
       tmux source-file ~/.tmux.conf 2>/dev/null || true
       echo "Configs reloaded"
+      exit 0
+      ;;
+    -h|--help)
+      cat <<'HELP'
+sstor — session manager for tmux worktrees and Claude Code
+
+Usage: sstor [options]
+
+Session management:
+  -p, --project <name>    Target project (inferred from cwd if omitted)
+  -i, --instance <name>   Target instance (worktree)
+  -s, --server <cmd>      Start a server window with the given command
+  -k, --kill              Kill current/target session, switch to next
+  -e, --end               Kill current/target session (allows last session)
+  -d, --delete            Delete instance: kill session, remove worktree, delete branch
+  -l, --list              List all instances for the project
+  -m, --merge             Merge instance branch into main project branch
+  -g, --derge             Merge, then delete the instance (merge + delete)
+
+Claude agent workflow:
+  --task <id>             Create instance for a task, launch orchestrator
+  --bug <id>              Create instance for a bug, launch orchestrator
+  --claim-next            Create instance, orchestrator claims next Ready task
+  --app-key <key>         Set the API key (saved to settings.local.json)
+
+Config:
+  --sync                  Re-merge Claude config (.claude/) into project/instance
+  -r, --reload            Reload bash profile and tmux config
+
+Environment:
+  TASK_APP_KEY            API key for the task/bug sheet web app.
+                          Stored in .claude/settings.local.json (never committed).
+                          Prompted on first --task/--bug/--claim-next use,
+                          or pass --app-key to set it explicitly.
+HELP
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -59,6 +110,305 @@ REPO_DIR="$HOME/dev/$PROJECT"
 if [[ ! -d "$REPO_DIR" ]]; then
   echo "Directory not found: $REPO_DIR"
   exit 1
+fi
+
+# --- Merge Claude Code config into a target directory ---
+merge_claude_config() {
+  local target="$1"
+  local source_claude="$SSTOR_DIR/.claude"
+  local source_claudemd="$source_claude/CLAUDE.md"
+  local url_file="$SSTOR_DIR/planning/deployments/webapp-url"
+  local target_claude="$target/.claude"
+  local target_claudemd="$target/CLAUDE.md"
+  local target_settings="$target_claude/settings.json"
+
+  # 1. Copy agents, commands, memory (overwrite); docs (don't overwrite)
+  echo "Copying agents, commands, memory..."
+  rsync -a \
+    --exclude='settings.json' \
+    --exclude='settings.local.json' \
+    --exclude='CLAUDE.md' \
+    --exclude='agents/docs/' \
+    "$source_claude/" "$target_claude/"
+
+  if [[ -d "$source_claude/agents/docs" ]]; then
+    echo "Copying docs (skip existing)..."
+    mkdir -p "$target_claude/agents/docs"
+    rsync -a --ignore-existing \
+      "$source_claude/agents/docs/" "$target_claude/agents/docs/"
+  fi
+
+  # 2. Merge settings.json
+  local source_settings="$source_claude/settings.json"
+  if [[ ! -f "$source_settings" ]]; then
+    echo "No source settings.json, skipping"
+  elif [[ ! -f "$target_settings" ]]; then
+    echo "Merging settings.json..."
+    cp "$source_settings" "$target_settings"
+    echo "  Created new settings.json"
+  else
+    echo "Merging settings.json..."
+    python3 -c "
+import json
+
+with open('$source_settings') as f:
+    src = json.load(f)
+with open('$target_settings') as f:
+    tgt = json.load(f)
+
+# Merge env (source wins on conflict)
+tgt.setdefault('env', {})
+for k, v in src.get('env', {}).items():
+    tgt['env'][k] = v
+    print(f'  Set env: {k}')
+
+# Merge mcpServers (source wins on conflict)
+tgt.setdefault('mcpServers', {})
+for k, v in src.get('mcpServers', {}).items():
+    if k not in tgt['mcpServers']:
+        tgt['mcpServers'][k] = v
+        print(f'  Added MCP server: {k}')
+    else:
+        print(f'  Skipped MCP server (already exists): {k}')
+
+# Merge permissions.allow (dedupe)
+tgt.setdefault('permissions', {})
+tgt_allow = set(tgt['permissions'].get('allow', []))
+src_allow = set(src.get('permissions', {}).get('allow', []))
+new_perms = src_allow - tgt_allow
+if new_perms:
+    tgt['permissions']['allow'] = sorted(tgt_allow | src_allow)
+    print(f'  Added {len(new_perms)} new permission(s)')
+else:
+    print('  No new permissions to add')
+
+for key in ['deny', 'defaultMode']:
+    if key in src.get('permissions', {}) and key not in tgt['permissions']:
+        tgt['permissions'][key] = src['permissions'][key]
+
+if 'sandbox' in src and 'sandbox' not in tgt:
+    tgt['sandbox'] = src['sandbox']
+
+with open('$target_settings', 'w') as f:
+    json.dump(tgt, f, indent=2)
+    f.write('\n')
+
+print('  settings.json merged')
+"
+  fi
+
+  # 3. Set TASK_APP_URL from last deploy
+  if [[ -f "$url_file" ]]; then
+    local webapp_url
+    webapp_url=$(cat "$url_file")
+    echo "Setting TASK_APP_URL..."
+    python3 -c "
+import json
+with open('$target_settings') as f:
+    settings = json.load(f)
+settings.setdefault('env', {})
+settings['env']['TASK_APP_URL'] = '$webapp_url'
+with open('$target_settings', 'w') as f:
+    json.dump(settings, f, indent=2)
+    f.write('\n')
+print('  TASK_APP_URL: $webapp_url')
+"
+  fi
+
+  # 4. Merge CLAUDE.md
+  local marker="<!-- implementation-agent-system -->"
+  local marker_end="<!-- /implementation-agent-system -->"
+
+  echo "Merging CLAUDE.md..."
+  if [[ ! -f "$target_claudemd" ]]; then
+    cp "$source_claudemd" "$target_claudemd"
+    echo "  Created new CLAUDE.md"
+  elif grep -qF "$marker" "$target_claudemd"; then
+    python3 -c "
+marker = '$marker'
+marker_end = '$marker_end'
+
+with open('$target_claudemd') as f:
+    content = f.read()
+with open('$source_claudemd') as f:
+    insert = f.read()
+
+start = content.find(marker)
+end = content.find(marker_end)
+if start != -1 and end != -1:
+    end += len(marker_end)
+    content = content[:start] + marker + '\n' + insert + '\n' + marker_end + content[end:]
+    print('  Replaced existing implementation agent section')
+else:
+    content = content[:start] + marker + '\n' + insert + '\n' + marker_end + content[start + len(marker):]
+    print('  Rewrapped implementation agent section')
+
+with open('$target_claudemd', 'w') as f:
+    f.write(content)
+"
+  else
+    printf '\n%s\n' "$marker" >> "$target_claudemd"
+    cat "$source_claudemd" >> "$target_claudemd"
+    printf '\n%s\n' "$marker_end" >> "$target_claudemd"
+    echo "  Appended implementation agent section"
+  fi
+
+  # 5. Merge settings.local.json (contains secrets + task-app permissions, never committed)
+  local source_local_settings="$source_claude/settings.local.json"
+  local target_local_settings="$target_claude/settings.local.json"
+  if [[ -f "$source_local_settings" ]]; then
+    echo "Merging settings.local.json..."
+    if [[ ! -f "$target_local_settings" ]]; then
+      cp "$source_local_settings" "$target_local_settings"
+      echo "  Created new settings.local.json"
+    else
+      python3 -c "
+import json
+
+with open('$source_local_settings') as f:
+    src = json.load(f)
+with open('$target_local_settings') as f:
+    tgt = json.load(f)
+
+# Merge env (source wins)
+tgt.setdefault('env', {})
+for k, v in src.get('env', {}).items():
+    tgt['env'][k] = v
+
+# Merge permissions.allow (dedupe)
+tgt.setdefault('permissions', {})
+tgt_allow = set(tgt['permissions'].get('allow', []))
+src_allow = set(src.get('permissions', {}).get('allow', []))
+new_perms = src_allow - tgt_allow
+if new_perms:
+    tgt['permissions']['allow'] = sorted(tgt_allow | src_allow)
+    print(f'  Added {len(new_perms)} new permission(s)')
+
+# Merge sandbox.network.allowedDomains (dedupe)
+src_sandbox = src.get('sandbox', {})
+if src_sandbox:
+    tgt.setdefault('sandbox', {})
+    tgt['sandbox'].setdefault('network', {})
+    src_network = src_sandbox.get('network', {})
+    tgt_domains = set(tgt['sandbox']['network'].get('allowedDomains', []))
+    src_domains = set(src_network.get('allowedDomains', []))
+    new_domains = src_domains - tgt_domains
+    if new_domains:
+        tgt['sandbox']['network']['allowedDomains'] = sorted(tgt_domains | src_domains)
+        print(f'  Added {len(new_domains)} new sandbox domain(s)')
+    # Merge other sandbox fields that aren't set
+    for k, v in src_sandbox.items():
+        if k != 'network' and k not in tgt['sandbox']:
+            tgt['sandbox'][k] = v
+
+with open('$target_local_settings', 'w') as f:
+    json.dump(tgt, f, indent=2)
+    f.write('\n')
+
+print('  settings.local.json merged')
+"
+    fi
+  fi
+
+  # 6. Ensure target .gitignore covers .claude internals
+  local target_gitignore="$target/.gitignore"
+  echo "Checking .gitignore..."
+  if [[ ! -f "$target_gitignore" ]]; then
+    cat > "$target_gitignore" <<'GI'
+### claude ###
+.claude/*
+!.claude/commands/
+GI
+    echo "  Created .gitignore with claude entries"
+  else
+    local changed=false
+    if ! grep -qF '.claude/*' "$target_gitignore"; then
+      printf '\n### claude ###\n.claude/*\n' >> "$target_gitignore"
+      changed=true
+    fi
+    if ! grep -qF '!.claude/commands/' "$target_gitignore"; then
+      printf '!.claude/commands/\n' >> "$target_gitignore"
+      changed=true
+    fi
+    if $changed; then
+      echo "  Updated .gitignore with claude entries"
+    else
+      echo "  .gitignore already has claude entries"
+    fi
+  fi
+
+  echo "Done merging Claude config into $target"
+}
+
+# Sync Claude config into an existing project/instance
+if $SYNC; then
+  if [[ -n "$INSTANCE" ]]; then
+    SYNC_TARGET="$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${INSTANCE}"
+  else
+    SYNC_TARGET="$REPO_DIR"
+  fi
+  if [[ ! -d "$SYNC_TARGET" ]]; then
+    echo "Directory not found: $SYNC_TARGET"
+    exit 1
+  fi
+  merge_claude_config "$SYNC_TARGET"
+  exit 0
+fi
+
+# --task / --bug / --claim-next require TASK_APP_KEY in settings.local.json
+LOCAL_SETTINGS="$SSTOR_DIR/.claude/settings.local.json"
+if [[ -n "$TASK" ]] || [[ -n "$BUG" ]] || $CLAIM_NEXT; then
+  NEED_KEY=false
+  if [[ ! -f "$LOCAL_SETTINGS" ]] || ! python3 -c "
+import json, sys
+with open('$LOCAL_SETTINGS') as f:
+    d = json.load(f)
+if not d.get('env', {}).get('TASK_APP_KEY'):
+    sys.exit(1)
+" 2>/dev/null; then
+    NEED_KEY=true
+  fi
+  if $NEED_KEY && [[ -z "${APP_KEY:-}" ]]; then
+    echo -n "Enter TASK_APP_KEY: "
+    read -r APP_KEY
+    if [[ -z "$APP_KEY" ]]; then
+      echo "No key provided, aborting."
+      exit 1
+    fi
+  fi
+  if [[ -n "${APP_KEY:-}" ]]; then
+    mkdir -p "$(dirname "$LOCAL_SETTINGS")"
+    if [[ -f "$LOCAL_SETTINGS" ]]; then
+      python3 -c "
+import json
+with open('$LOCAL_SETTINGS') as f:
+    d = json.load(f)
+d.setdefault('env', {})
+d['env']['TASK_APP_KEY'] = '$APP_KEY'
+with open('$LOCAL_SETTINGS', 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+"
+    else
+      python3 -c "
+import json
+d = {'env': {'TASK_APP_KEY': '$APP_KEY'}}
+with open('$LOCAL_SETTINGS', 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+"
+    fi
+    echo "Saved TASK_APP_KEY to settings.local.json"
+  fi
+fi
+
+# --task / --bug / --claim-next imply an instance name
+if [[ -n "$TASK" ]]; then
+  INSTANCE="$TASK"
+elif [[ -n "$BUG" ]]; then
+  INSTANCE="$BUG"
+elif $CLAIM_NEXT; then
+  INSTANCE="next-$(date +%Y%m%dT%H%M%S)"
 fi
 
 # Kill session and switch to next available
@@ -234,6 +584,7 @@ if $DELETE; then
 fi
 
 # Create/attach session
+NEW_SETUP=false
 if [[ -n "$INSTANCE" ]]; then
   SESSION="${PROJECT}-${INSTANCE}"
   WORKTREE_DIR="$HOME/dev/${PROJECT}__worktrees/$SESSION"
@@ -241,12 +592,20 @@ if [[ -n "$INSTANCE" ]]; then
   if [[ ! -d "$WORKTREE_DIR" ]]; then
     mkdir -p "$HOME/dev/${PROJECT}__worktrees"
     git -C "$REPO_DIR" worktree add "$WORKTREE_DIR" -b "$SESSION"
+    NEW_SETUP=true
   fi
 
   START_DIR="$WORKTREE_DIR"
 else
   SESSION="$PROJECT"
   START_DIR="$REPO_DIR"
+  if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+    NEW_SETUP=true
+  fi
+fi
+
+if $NEW_SETUP; then
+  merge_claude_config "$START_DIR"
 fi
 
 # Attach if outside tmux, switch-client if inside tmux.
@@ -265,18 +624,26 @@ fi
 
 WINDOW=1
 
-# Window 1: console
-tmux new-session -d -s "$SESSION" -c "$START_DIR" -n console
+# Window 1: claude
+tmux new-session -d -s "$SESSION" -c "$START_DIR" -n claude
+if [[ -n "$TASK" ]]; then
+  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --task $TASK'" C-m
+elif [[ -n "$BUG" ]]; then
+  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --bug $BUG'" C-m
+elif $CLAIM_NEXT; then
+  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task'" C-m
+else
+  tmux send-keys -t "$SESSION":$WINDOW 'claude --continue' C-m
+fi
 
-# Window 2: editor
+# Window 2: console
+WINDOW=$((WINDOW + 1))
+tmux new-window  -t "$SESSION":$WINDOW -n console -c "$START_DIR"
+
+# Window 3: editor
 WINDOW=$((WINDOW + 1))
 tmux new-window  -t "$SESSION":$WINDOW -n editor -c "$START_DIR"
 tmux send-keys   -t "$SESSION":$WINDOW 'nvim .' C-m
-
-# Window 3: claude
-WINDOW=$((WINDOW + 1))
-tmux new-window  -t "$SESSION":$WINDOW -n claude -c "$START_DIR"
-tmux send-keys   -t "$SESSION":$WINDOW 'claude' C-m
 
 # Window 4: server (optional)
 if [[ -n "$SERVER_CMD" ]]; then

@@ -33,4 +33,16 @@ return {
   {
     "supermaven-inc/supermaven-nvim",
   },
+  {
+    "rolv-apneseth/tfm.nvim",
+    lazy = false,
+    opts = {
+      file_manager = "vifm",
+      replace_netrw = true,
+      enable_cmds = true,
+    },
+    keys = {
+      { "<leader>v", function() require("tfm").open() end, desc = "Open vifm" },
+    },
+  },
 }

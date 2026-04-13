@@ -223,7 +223,8 @@ vim.keymap.set('n', '<Leader>b', ':<C-f>isbuffer<Space>', { noremap = true, sile
 vim.opt.path = ".,**"
 -- vim.keymap.set('n', '<Leader>f', ':<C-f>isilent find *', { noremap = true, silent = true })
 vim.keymap.set('n', '<Leader>s', ':<C-f>isfind *', { noremap = true, silent = true })
-vim.keymap.set('n', '<Leader>v', ':<C-f>ivert sfind *', { noremap = true, silent = true })
+-- Currently used by the tfm plugin
+-- vim.keymap.set('n', '<Leader>v', ':<C-f>ivert sfind *', { noremap = true, silent = true })
 vim.keymap.set('n', '<Leader>h', ':<C-f>ibo sfind *', { noremap = true, silent = true })
 vim.keymap.set('n', '<Leader>t', ':<C-f>itabfind *', { noremap = true, silent = true })
 

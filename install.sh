@@ -8,3 +8,4 @@ ln -sf "$REPO_DIR/.bash_profile" ~/.bash_profile
 ln -sfn "$REPO_DIR/scripts" ~/.config/scripts
 ln -sfn "$REPO_DIR/nvim" ~/.config/nvim
 ln -sf "$REPO_DIR/.gitconfig" ~/.gitconfig
+ln -sf "$REPO_DIR/.vifmrc" ~/.vifmrc

@@ -1,0 +1,5 @@
+.claude/settings.local.json
+
+### claude ###
+.claude/*
+!.claude/commands/
