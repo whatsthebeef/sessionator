@@ -3,3 +3,4 @@
 ### claude ###
 .claude/*
 !.claude/commands/
+!.claude/agents/
