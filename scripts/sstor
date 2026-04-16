@@ -492,11 +492,31 @@ if $MERGE || $DERGE; then
 
   SESSION="${PROJECT}-${INSTANCE}"
   WORKTREE_DIR="$HOME/dev/${PROJECT}__worktrees/$SESSION"
-  BRANCH="$SESSION"
+  DEFAULT_BRANCH="$SESSION"
 
-  # Merge into main repo
-  git -C "$REPO_DIR" merge "$BRANCH"
-  echo "Merged $BRANCH into $(git -C "$REPO_DIR" branch --show-current)"
+  # Detect the active branch inside the worktree (may be task/<id>-<slug>)
+  if [[ -d "$WORKTREE_DIR" ]]; then
+    BRANCH=$(git -C "$WORKTREE_DIR" branch --show-current)
+  else
+    BRANCH="$DEFAULT_BRANCH"
+  fi
+
+  if [[ -z "$BRANCH" ]]; then
+    echo "Could not determine branch to merge from $WORKTREE_DIR"
+    exit 1
+  fi
+
+  # Merge into master in the main repo
+  CURRENT_BRANCH=$(git -C "$REPO_DIR" branch --show-current)
+  if [[ "$CURRENT_BRANCH" != "master" ]]; then
+    git -C "$REPO_DIR" checkout master
+  fi
+  echo "Merging $BRANCH into master..."
+  git -C "$REPO_DIR" merge --no-ff "$BRANCH"
+  echo "Merged $BRANCH into master"
+  if [[ "$CURRENT_BRANCH" != "master" ]]; then
+    git -C "$REPO_DIR" checkout "$CURRENT_BRANCH"
+  fi
 
   if $DERGE; then
     # Kill tmux session if it exists
@@ -518,11 +538,13 @@ if $MERGE || $DERGE; then
       echo "Removed worktree: $WORKTREE_DIR"
     fi
 
-    # Delete branch
-    if git -C "$REPO_DIR" rev-parse --verify "$BRANCH" &>/dev/null; then
-      git -C "$REPO_DIR" branch -D "$BRANCH"
-      echo "Deleted branch: $BRANCH"
-    fi
+    # Delete both the task branch (if different) and the worktree default branch
+    for b in "$BRANCH" "$DEFAULT_BRANCH"; do
+      if [[ -n "$b" ]] && git -C "$REPO_DIR" rev-parse --verify "$b" &>/dev/null; then
+        git -C "$REPO_DIR" branch -D "$b"
+        echo "Deleted branch: $b"
+      fi
+    done
   fi
 
   # Switch to main project session
