@@ -179,7 +179,8 @@ For each review round (up to 3):
    - The current round number and max rounds (3)
    - The path to the review document (`.reviews/<type>-<id>.md`)
    - The test report path (`.reviews/<type>-<id>-tests.md`) for reference
-   - Relevant reference doc paths
+   - **Always** pass any reference docs with "conventions" in the name — the reviewer must check every change against them
+   - Any additional reference doc paths relevant to the task
 2. The change_reviewer will:
    - Review all changes on the current branch vs `master`
    - Classify each comment as `in-scope` (must fix) or `suggestion` (optional)
@@ -195,7 +196,7 @@ For each review round (up to 3):
 
 ### Phase 6: Finalise
 
-1. Leave all changes unstaged — do **NOT** run `git add` or `git commit`. The user will review and commit manually.
+1. Stage all changes with `git add -A` but do **NOT** commit. The user will review and commit manually.
 2. POST `{"action": "finish_task", "taskId": "<id>", "key": "<TASK_APP_KEY>"}` to the web app URL to set the status to Finished.
 3. Do **NOT** push to remote or create a pull request.
 

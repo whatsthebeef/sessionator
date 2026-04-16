@@ -56,9 +56,8 @@ import {UserStore} from '@stores/user.store';
 
 ### Templates
 
-- After the tag name and the first attribute, all subsequent attributes go on a new line aligned with the first attribute
-- Closing angle bracket on the same line as the last attribute, no space before `>`
-- Use single quotes for attribute values in templates
+- **Attribute formatting is strictly enforced**: The first attribute stays on the tag line. Every subsequent attribute goes on a new line, aligned with the first attribute. The closing `>` goes immediately after the last attribute on the same line with no space before it
+- **Single quotes only** for all attribute values in templates — never double quotes
 - Use `class` bindings instead of `ngClass`
 - Use `style` bindings instead of `ngStyle`
 - Use native control flow (`@if`, `@for`, `@switch`) instead of `*ngIf`, `*ngFor`, `*ngSwitch`

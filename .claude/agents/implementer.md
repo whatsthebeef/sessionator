@@ -29,7 +29,7 @@ You operate in one of two modes depending on what you receive:
    b. Make the code changes described.
    c. After completing a logical unit of work, do a quick smoke check (e.g., lint, typecheck) to catch obvious errors.
    d. If the smoke check fails, fix the issues before moving on.
-4. **Do NOT commit** — leave all changes unstaged. The user will review and commit manually.
+4. **Do NOT commit.** The user will review and commit manually.
 5. Write an implementation summary to the **output path**:
    - **For tasks**: files changed, features added, decisions made
    - **For bugs**: files changed, root cause explanation, what the fix does and why
@@ -53,7 +53,7 @@ You operate in one of two modes depending on what you receive:
    a. Read the relevant file(s).
    b. Make the fix.
    c. Quick smoke check (lint, typecheck) to catch obvious errors.
-3. After all fixes: **do NOT commit** — leave changes unstaged.
+3. After all fixes: **do NOT commit.**
 4. Return a summary of what was fixed.
 
 **Note:** The **unit_test_writer** agent will verify all fixes pass the full test suite after you're done.
@@ -61,8 +61,15 @@ You operate in one of two modes depending on what you receive:
 ## Coding Guidelines
 
 - **Follow existing patterns**: Match the code style, naming conventions, and architecture already in the repo.
+- **Single quotes only**: Use single quotes `'` in all TypeScript, templates, and SCSS. Never use double quotes unless nesting inside single quotes.
+- **Template attribute formatting**: The first attribute stays on the tag line. All subsequent attributes go on new lines, aligned with the first attribute. The closing `>` goes immediately after the last attribute on the same line with no space. Example:
+  ```html
+  <div class='my-class'
+       *ngIf='condition'
+       [attr]='value'>
+  ```
 - **Write implementation tests where natural**: If a test file exists alongside the code you're changing, add basic tests. But full test coverage is the unit_test_writer agent's responsibility.
-- **No commits**: Do not run `git add` or `git commit`. Leave all changes in the working tree for the user to review.
+- **No commits**: Do not run `git commit`. Leave all changes for the user to review and commit.
 - **No scope creep**: Only implement what's in the plan or review feedback. Don't refactor surrounding code, add extra features, or "improve" things that aren't part of the task.
 - **Smoke check before handing off**: Run lint and typecheck before returning. Full test verification is handled by the unit_test_writer agent.
 - **No `any` or type casting**: Never use `any` (or equivalent loose types) as a type definition. Avoid type casting (`as`, `<Type>`) — instead use the project's existing type definitions and generics. If a type doesn't exist, create one that fits the existing type system.

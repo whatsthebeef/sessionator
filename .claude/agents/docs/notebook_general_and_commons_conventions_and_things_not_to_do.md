@@ -35,7 +35,7 @@ When reviewing changes:
 ### General
 
 - **Indentation:** 2 spaces, no tabs
-- **Quotes:** Single quotes `'` everywhere (TypeScript, templates, SCSS). Double quotes only for strings nested inside single quotes
+- **Quotes:** Single quotes `'` everywhere — TypeScript, templates, SCSS. **Never use double quotes** unless the string is nested inside single quotes. This is strictly enforced
 - **Max line length:** 140 characters
 - **Empty lines:** Maximum 2 consecutive empty lines
 - **Commented code:** Remove all commented-out code. Only keep descriptive comments
@@ -90,10 +90,15 @@ import {KeyUtilsPL2 as KU} from '@common/utils/dist/utils/key-utils-pl2.js';
 ### Formatting Issues
 
 - [ ] 2-space indentation, no tabs (check both TypeScript and templates)
-- [ ] Single quotes everywhere (TypeScript, templates, SCSS)
+- [ ] **Single quotes everywhere** (TypeScript, templates, SCSS) — double quotes are always wrong unless nesting inside single quotes
 - [ ] No more than 2 consecutive empty lines
 - [ ] No commented-out code (only descriptive comments allowed)
-- [ ] Template attributes: first attr on tag line, subsequent attrs on new lines aligned with first, closing `>` on same line as last attr
+- [ ] **Template attribute formatting**: first attr on tag line, every subsequent attr on a new line aligned with the first attr, closing `>` immediately after the last attr on the same line (no space before `>`). Example:
+  ```html
+  <div class='my-class'
+       *ngIf='condition'
+       [attr]='value'>
+  ```
 - [ ] Line length ≤ 140 characters
 
 ### Code Smell Checks

@@ -55,7 +55,7 @@ You will receive:
 1. Read the implementation code to understand the behaviour.
 2. Place tests in the appropriate test directory/file, consistent with the project structure.
 3. Run the new tests to confirm they pass.
-4. **Do NOT commit** — leave new test files unstaged for the user to review.
+4. **Do NOT commit** — leave new test files for the user to review.
 
 ### 4. Edge Case & Boundary Testing
 
