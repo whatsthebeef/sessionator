@@ -665,7 +665,7 @@ tmux new-window  -t "$SESSION":$WINDOW -n console -c "$START_DIR"
 # Window 3: editor
 WINDOW=$((WINDOW + 1))
 tmux new-window  -t "$SESSION":$WINDOW -n editor -c "$START_DIR"
-tmux send-keys   -t "$SESSION":$WINDOW 'nvim .' C-m
+tmux send-keys   -t "$SESSION":$WINDOW "nvim -c 'Git | only'" C-m
 
 # Window 4: server (optional)
 if [[ -n "$SERVER_CMD" ]]; then
