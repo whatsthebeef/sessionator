@@ -89,12 +89,21 @@ export class VerbNounDomain {
 - [ ] Backend: `mock.verify()` in `afterEach()`
 - [ ] Tests actually reach their assertions (check `done()` is called, `fakeAsync` uses `flush()`/`tick()`)
 
+## Type Safety
+
+**Never use `any` or type casting.** The project uses a branded key type system:
+
+- **`key-pl2.ts`** — Branded key types (`ClassKey`, `AssignmentKey`, etc.) encoding valid parent-child relationships.
+- **`type-utils.ts`** — Utility types for type-safe entry access.
+- **`EntryState` auto-typing** — Pass a correctly typed `pK` and the returned entry is auto-typed. Always narrow raw string keys to branded types before use.
+
 ## Key Source Files for Reviewers
 
 | File | Why It Matters |
 |------|---------------|
 | `services/events/stacks/event-bus-rules.yaml` | EventBridge routing — verify new intents have rules |
 | `services/entries/src/utils/generate-entry-intent.ts` | Intent mapping — verify new types are mapped |
+| `common/utils/src/models/keys-pl2.ts` | Branded key types — foundation of the type system |
 | `sort_key_and_entry_hierarchy.md` | Sort key structure — verify key operations are correct |
 | `event_system_and_project_structure.md` | Event system — verify event flow is correct |
 | `*_testing.md` | Test patterns — verify tests follow conventions |

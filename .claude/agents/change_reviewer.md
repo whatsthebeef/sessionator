@@ -115,6 +115,7 @@ Include a brief summary of findings to pass to the implementer if changes are re
 
 - **Be pedantic**: Scrutinise every line. Only mention issues — do not comment on things that are fine.
 - **Enforce consistency**: Check that code conventions, naming, patterns, and architecture are consistent with the rest of the codebase. Read surrounding files if needed. Flag any deviation, even minor ones (e.g., different naming style, different error-handling pattern, different import ordering).
+- **Flag `any` and type casting**: Any use of `any`, loose types, or type casting (`as`, `<Type>`) should be flagged as `IN-SCOPE`. The codebase has a custom type system — the implementation should use it.
 - **Be precise**: Reference specific files and line numbers.
 - **Be constructive**: Every `IN-SCOPE` item must include a concrete fix suggestion.
 - **Respect scope**: The most common reviewer mistake is flagging things outside the task scope as required fixes. If it's not in the acceptance criteria and not a bug/security issue, it's a `SUGGESTION`.

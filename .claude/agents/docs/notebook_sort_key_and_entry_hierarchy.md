@@ -430,6 +430,17 @@ CurriculumKey  = GenerateKey<'Curriculum'>               // standalone root
 
 These types enforce at compile time that e.g. an `AssignmentKey` can only exist under a `ClassKey`.
 
+### Type Utilities (`type-utils.ts`)
+
+The `type-utils.ts` file provides utility types that work alongside `key-pl2.ts` to enable type-safe entry access. A common pattern is that an entry fetched from `EntryState` is **auto-typed** when the correct `pK` type is passed:
+
+```typescript
+// When you pass a typed pK, the returned entry is automatically typed:
+const entry = entryState[assignmentPK];  // auto-typed as Assignment entry
+```
+
+**Always use these typed keys and utilities instead of `any` or type casting.** If you have a `string` pK, narrow it to the correct branded type (e.g. `ClassKey`, `AssignmentKey`) before using it with `EntryState`. Never cast with `as` — the type system is designed to make casting unnecessary.
+
 ## Key Source Files Reference
 
 | File | Purpose |

@@ -98,7 +98,8 @@ import {KeyUtilsPL2 as KU} from '@common/utils/dist/utils/key-utils-pl2.js';
 
 ### Code Smell Checks
 
-- [ ] No `any` type where a proper type can be inferred or defined
+- [ ] No `any` type where a proper type can be inferred or defined — use the custom typing system in `key-pl2.ts` and `type-utils.ts` instead
+- [ ] No type casting (`as`, `<Type>`) — leverage generics and the project's type utilities
 - [ ] No empty `catch` blocks
 - [ ] No logic in constructors beyond dependency injection and simple initialization
 - [ ] No business logic in components — delegate to actions, stores, or services

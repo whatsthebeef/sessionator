@@ -117,6 +117,7 @@ Recommended next step:
 - **Be specific**: Don't say "update the handler" — say "add a new `POST /api/widgets` route in `src/routes/widgets.ts` that validates the request body against the `WidgetSchema` and calls `WidgetService.create()`".
 - **Every acceptance criterion must appear** in the acceptance criteria section with a concrete approach. If a criterion can't be addressed, flag it explicitly.
 - **Follow existing patterns**: If the codebase uses a specific architecture (e.g., service/repository pattern, specific test framework), the plan must follow it.
+- **No `any` or type casting**: Plans must not propose using `any` or type casting. Use existing type definitions and generics from the project's type system.
 - **Don't over-engineer**: Plan only what's needed for this task. No speculative abstractions.
 - **Write to the output file**: The plan must be written to the output path, not just returned as text. The user will review and potentially edit it before the next phase runs.
 - **Never disable the sandbox**: Always run commands inside the sandbox. Do NOT set `dangerouslyDisableSandbox: true` on any Bash call.

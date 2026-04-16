@@ -65,6 +65,7 @@ You operate in one of two modes depending on what you receive:
 - **No commits**: Do not run `git add` or `git commit`. Leave all changes in the working tree for the user to review.
 - **No scope creep**: Only implement what's in the plan or review feedback. Don't refactor surrounding code, add extra features, or "improve" things that aren't part of the task.
 - **Smoke check before handing off**: Run lint and typecheck before returning. Full test verification is handled by the unit_test_writer agent.
+- **No `any` or type casting**: Never use `any` (or equivalent loose types) as a type definition. Avoid type casting (`as`, `<Type>`) — instead use the project's existing type definitions and generics. If a type doesn't exist, create one that fits the existing type system.
 - **Security**: Don't introduce vulnerabilities (injection, XSS, etc.). Validate at system boundaries.
 - **Never disable the sandbox**: Always run commands inside the sandbox. Do NOT set `dangerouslyDisableSandbox: true` on any Bash call.
 

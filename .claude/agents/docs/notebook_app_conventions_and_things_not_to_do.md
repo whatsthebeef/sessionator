@@ -324,6 +324,16 @@ this.store.state$.pipe(
 
 ---
 
+## Type Safety
+
+**Never use `any` or type casting.** The project has a custom typing system built on branded string types:
+
+- **`key-pl2.ts`** (`common/utils/src/models/keys-pl2.ts`) — Branded key types (`ClassKey`, `AssignmentKey`, etc.) that encode valid parent-child relationships at the type level.
+- **`type-utils.ts`** — Utility types that work with the branded keys to provide auto-typed entry access.
+- **`EntryState` auto-typing** — When you pass a correctly typed `pK` to `EntryState`, the returned entry is automatically typed. This is the standard pattern: narrow a raw string `pK` to the correct branded type, then use it with `EntryState` for type-safe access.
+
+If a type doesn't exist for your use case, create one that fits this system rather than resorting to `any` or `as` casts.
+
 ## Key Source Files for Reviewers
 
 | File | Why It Matters |
@@ -331,6 +341,7 @@ this.store.state$.pipe(
 | `services/app/src/app/stores/abstract-store.ts` | Base store pattern — 35 lines, defines all state management |
 | `services/app/src/app/directives/policy/action-policy.ts` | ActionPolicy interface — 7 lines, defines policy contract |
 | `services/app/src/app/app.module.ts` (lines 155-183) | Decorator chain wiring — understand event flow |
+| `common/utils/src/models/keys-pl2.ts` | Branded key types — the foundation of the type system |
 | `sort_key_and_entry_hierarchy.md` | Sort key structure — verify key operations are correct |
 | `event_system_and_project_structure.md` | Event system — verify event flow is correct |
 | `*_testing.md` | Test patterns — verify tests follow conventions |

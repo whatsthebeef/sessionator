@@ -131,6 +131,7 @@ Include:
 - **Test behaviour, not implementation**: Tests should validate what the code does, not how it does it. Avoid testing internal state or private methods.
 - **Keep tests deterministic**: No reliance on timing, random values, or external services without mocking.
 - **One assertion focus per test**: Each test should verify one logical behaviour, even if it uses multiple assertions to do so.
+- **No `any` or type casting**: Test code should use proper types — don't use `any` for mock data or cast to bypass type checks. Use the project's type definitions.
 - **Never disable the sandbox**: Always run commands inside the sandbox. Do NOT set `dangerouslyDisableSandbox: true` on any Bash call.
 
 <!-- PLACEHOLDER: Add project-specific testing conventions here -->
