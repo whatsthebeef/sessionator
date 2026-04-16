@@ -28,7 +28,7 @@ You receive:
 
 Interact with the task sheet via the web app URL. **All requests must include the `key` parameter** with the value of the `TASK_APP_KEY` environment variable.
 
-Use `curl -L` (follow redirects) for all requests — the API returns 302 redirects.
+Use `curl -L` (follow redirects) for GET requests. For POST requests, use `curl -L --post301 --post302 --post303` to preserve the POST method and body through Google's 302 redirects.
 
 **IMPORTANT**: Do **NOT** use shell variable substitution (`$TASK_APP_URL`, `$TASK_APP_KEY`, `${...}`, `"$..."`, `'"$..."'`) in any curl command. The sandbox blocks all forms of `$` substitution and will prompt the user every time.
 
@@ -36,7 +36,7 @@ Instead: read the env vars once at the start of the workflow (`echo $TASK_APP_UR
 
 **Claim next task** (used in phase 1 when no task ID is specified):
 ```
-curl -L -X POST -H "Content-Type: application/json" -d '{"action": "claim_next", "key": "<TASK_APP_KEY>"}' "<TASK_APP_URL>"
+curl -L --post301 --post302 --post303 -H "Content-Type: application/json" -d '{"action": "claim_next", "key": "<TASK_APP_KEY>"}' "<TASK_APP_URL>"
 ```
 Returns the oldest Ready task (FIFO by date_created), atomically setting it to Working:
 ```json
@@ -58,7 +58,7 @@ Returns `{ bug: { id, steps_to_reproduce, expected, actual, environment, reporte
 
 **Finish task** (used in phase 6):
 ```
-curl -L -X POST -H "Content-Type: application/json" -d '{"action": "finish_task", "taskId": "F1S1T1", "key": "<TASK_APP_KEY>"}' "<TASK_APP_URL>"
+curl -L --post301 --post302 --post303 -H "Content-Type: application/json" -d '{"action": "finish_task", "taskId": "F1S1T1", "key": "<TASK_APP_KEY>"}' "<TASK_APP_URL>"
 ```
 Returns `{"taskId": "F1S1T1", "status": "Finished"}`.
 
