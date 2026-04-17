@@ -59,6 +59,7 @@ Session management:
   -p, --project <name>    Target project (inferred from cwd if omitted)
   -i, --instance <name>   Target instance (worktree)
   -s, --server <cmd>      Start a server window with the given command
+                          (auto-read from .sstor/sstor.conf if present)
   -k, --kill              Kill current/target session, switch to next
   -e, --end               Kill current/target session (allows last session)
   -d, --delete            Delete instance: kill session, remove worktree, delete branch
@@ -122,21 +123,13 @@ merge_claude_config() {
   local target_claudemd="$target/CLAUDE.md"
   local target_settings="$target_claude/settings.json"
 
-  # 1. Copy agents, commands, memory (overwrite); docs (don't overwrite)
+  # 1. Copy agents, commands, memory (overwrite)
   echo "Copying agents, commands, memory..."
   rsync -a \
     --exclude='settings.json' \
     --exclude='settings.local.json' \
     --exclude='CLAUDE.md' \
-    --exclude='agents/docs/' \
     "$source_claude/" "$target_claude/"
-
-  if [[ -d "$source_claude/agents/docs" ]]; then
-    echo "Copying docs (skip existing)..."
-    mkdir -p "$target_claude/agents/docs"
-    rsync -a --ignore-existing \
-      "$source_claude/agents/docs/" "$target_claude/agents/docs/"
-  fi
 
   # 2. Merge settings.json
   local source_settings="$source_claude/settings.json"
@@ -310,7 +303,7 @@ print('  settings.local.json merged')
     fi
   fi
 
-  # 6. Ensure target .gitignore covers .claude internals
+  # 6. Ensure target .gitignore covers .claude internals and .sstor ephemeral files
   local target_gitignore="$target/.gitignore"
   echo "Checking .gitignore..."
   if [[ ! -f "$target_gitignore" ]]; then
@@ -318,8 +311,11 @@ print('  settings.local.json merged')
 ### claude ###
 .claude/*
 !.claude/commands/
+
+### sstor ###
+.sstor/.port
 GI
-    echo "  Created .gitignore with claude entries"
+    echo "  Created .gitignore with claude/sstor entries"
   else
     local changed=false
     if ! grep -qF '.claude/*' "$target_gitignore"; then
@@ -330,10 +326,14 @@ GI
       printf '!.claude/commands/\n' >> "$target_gitignore"
       changed=true
     fi
+    if ! grep -qF '.sstor/.port' "$target_gitignore"; then
+      printf '\n### sstor ###\n.sstor/.port\n' >> "$target_gitignore"
+      changed=true
+    fi
     if $changed; then
-      echo "  Updated .gitignore with claude entries"
+      echo "  Updated .gitignore"
     else
-      echo "  .gitignore already has claude entries"
+      echo "  .gitignore already up to date"
     fi
   fi
 
@@ -411,6 +411,25 @@ elif $CLAIM_NEXT; then
   INSTANCE="next-$(date +%Y%m%dT%H%M%S)"
 fi
 
+# Kill server process on the port from .sstor/.port and clean up the file
+cleanup_server() {
+  local dir="$1"
+  local port_file="$dir/.sstor/.port"
+  if [[ -f "$port_file" ]]; then
+    local port
+    port=$(cat "$port_file")
+    if [[ -n "$port" ]]; then
+      local pids
+      pids=$(lsof -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null) || true
+      if [[ -n "$pids" ]]; then
+        echo "$pids" | xargs kill 2>/dev/null || true
+        echo "Killed server on port $port"
+      fi
+    fi
+    rm -f "$port_file"
+  fi
+}
+
 # Kill session and switch to next available
 if $KILL; then
   if [[ -z "${TMUX:-}" ]]; then
@@ -434,6 +453,12 @@ if $KILL; then
   if [[ "$(tmux display-message -p '#S')" == "$TARGET" ]]; then
     tmux switch-client -t "$NEXT"
   fi
+  # Resolve dir for cleanup
+  if [[ -n "$INSTANCE" ]]; then
+    cleanup_server "$HOME/dev/${PROJECT}__worktrees/$TARGET"
+  else
+    cleanup_server "$REPO_DIR"
+  fi
   tmux kill-session -t "$TARGET"
   exit 0
 fi
@@ -456,6 +481,11 @@ if $END; then
   NEXT=$(tmux list-sessions -F '#S' | grep -v "^${TARGET}$" | head -1) || true
   if [[ -n "$NEXT" ]] && [[ "$(tmux display-message -p '#S')" == "$TARGET" ]]; then
     tmux switch-client -t "$NEXT"
+  fi
+  if [[ -n "$INSTANCE" ]]; then
+    cleanup_server "$HOME/dev/${PROJECT}__worktrees/$TARGET"
+  else
+    cleanup_server "$REPO_DIR"
   fi
   tmux kill-session -t "$TARGET"
   exit 0
@@ -528,6 +558,7 @@ if $MERGE || $DERGE; then
         fi
         tmux switch-client -t "$PROJECT"
       fi
+      cleanup_server "$WORKTREE_DIR"
       tmux kill-session -t "$SESSION"
       echo "Killed session: $SESSION"
     fi
@@ -598,6 +629,7 @@ if $DELETE; then
       fi
       tmux switch-client -t "$NEXT"
     fi
+    cleanup_server "$WORKTREE_DIR"
     tmux kill-session -t "$SESSION"
     echo "Killed session: $SESSION"
   fi
@@ -628,6 +660,43 @@ fi
 
 if $NEW_SETUP; then
   merge_claude_config "$START_DIR"
+fi
+
+# Read project config from .sstor/sstor.conf (if no --server was passed)
+SSTOR_CONF="$REPO_DIR/.sstor/sstor.conf"
+if [[ -z "$SERVER_CMD" ]] && [[ -f "$SSTOR_CONF" ]]; then
+  _CONF_SERVER_BUILD=""
+  _CONF_SERVER_CMD=""
+  _CONF_PORT_BASE=""
+  while IFS='=' read -r key val; do
+    val="${val%\"}" ; val="${val#\"}"  # strip quotes
+    case "$key" in
+      SERVER_BUILD) _CONF_SERVER_BUILD="$val" ;;
+      SERVER_CMD)   _CONF_SERVER_CMD="$val" ;;
+      PORT_BASE)    _CONF_PORT_BASE="$val" ;;
+    esac
+  done < "$SSTOR_CONF"
+
+  if [[ -n "$_CONF_SERVER_CMD" ]]; then
+    # Find a free port starting from PORT_BASE
+    if [[ -n "$_CONF_PORT_BASE" ]]; then
+      PORT="$_CONF_PORT_BASE"
+      while lsof -iTCP:"$PORT" -sTCP:LISTEN -t &>/dev/null; do
+        PORT=$((PORT + 1))
+      done
+      echo "Server port: $PORT"
+      # Replace {PORT} placeholder in command
+      _CONF_SERVER_CMD="${_CONF_SERVER_CMD//\{PORT\}/$PORT}"
+      # Write port file so orchestrator/sub-agents can find it
+      mkdir -p "$START_DIR/.sstor"
+      echo "$PORT" > "$START_DIR/.sstor/.port"
+    fi
+    if [[ -n "$_CONF_SERVER_BUILD" ]]; then
+      SERVER_CMD="$_CONF_SERVER_BUILD && $_CONF_SERVER_CMD"
+    else
+      SERVER_CMD="$_CONF_SERVER_CMD"
+    fi
+  fi
 fi
 
 # Attach if outside tmux, switch-client if inside tmux.

@@ -49,13 +49,17 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 .claude/
 ├── settings.json          # Permissions, sandbox config
 ├── agents/
-│   ├── orchestrator.md    # Main agent — runs one phase at a time
-│   ├── investigator.md    # Analyzes task, builds implementation plan
+│   ├── orchestrator.md    # Main workflow — coordinates sub-agents
+│   ├── investigator.md    # Analyzes task/bug, builds plan
 │   ├── implementer.md     # Implements the plan, fixes review items
-│   ├── unit_test_writer.md # Runs tests, writes missing tests, produces test report
+│   ├── unit_test_writer.md # Runs tests, writes missing tests
 │   └── change_reviewer.md # Reviews code, classifies feedback
 ├── commands/
 │   └── run-task.md        # Entry point: /run-task
+.sstor/                    # Project-specific config (in each target project)
+├── sstor.conf             # Server command, port base
+└── docs/                  # Reference docs for sub-agents
+    └── index.md           # Doc index with descriptions
 .reviews/                  # Phase output and review documents
 ```
 
@@ -111,13 +115,17 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 .claude/
 ├── settings.json          # Permissions, sandbox config
 ├── agents/
-│   ├── orchestrator.md    # Main agent — runs one phase at a time
-│   ├── investigator.md    # Analyzes task, builds implementation plan
+│   ├── orchestrator.md    # Main workflow — coordinates sub-agents
+│   ├── investigator.md    # Analyzes task/bug, builds plan
 │   ├── implementer.md     # Implements the plan, fixes review items
-│   ├── unit_test_writer.md # Runs tests, writes missing tests, produces test report
+│   ├── unit_test_writer.md # Runs tests, writes missing tests
 │   └── change_reviewer.md # Reviews code, classifies feedback
 ├── commands/
 │   └── run-task.md        # Entry point: /run-task
+.sstor/                    # Project-specific config (in each target project)
+├── sstor.conf             # Server command, port base
+└── docs/                  # Reference docs for sub-agents
+    └── index.md           # Doc index with descriptions
 .reviews/                  # Phase output and review documents
 ```
 

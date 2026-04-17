@@ -64,15 +64,11 @@ Returns `{"taskId": "F1S1T1", "status": "Finished"}`.
 
 ## Reference Docs
 
-The `/.claude/agents/docs/` directory contains reference material. Before invoking each sub-agent, select the docs relevant to the task and include their paths in the agent's prompt so it can read them. Do not pass docs that aren't relevant.
+The `.sstor/docs/` directory in the project root contains project-specific reference material. Read `.sstor/docs/index.md` to see the available docs and their descriptions. Select the docs relevant to the task and include their full paths in each sub-agent's prompt. **Always** pass any docs with "conventions" in the name to the change_reviewer.
 
-- `notebook_sort_key_and_entry_hierarchy.md` — DynamoDB primary keys, sort key structure, node IDs, entry types, and entry hierarchy
-- `notebook_event_system_and_project_structure.md` — Event-driven architecture, service communication, event routing, and monorepo project structure
-- `notebook_app_conventions_and_things_not_to_do.md` — Angular frontend (services/app): naming, class types, architecture patterns, anti-patterns
-- `notebook_backend_conventions_and_things_not_to_do_when_developing.md` — Backend services: naming, formatting, architecture patterns
-- `notebook_general_and_commons_conventions_and_things_not_to_do.md` — Shared/common libraries and general: naming, formatting, architecture patterns, anti-patterns
-- `notebook_app_testing.md` — Angular frontend testing: Jasmine/Karma config, test utilities, Angular test patterns, async patterns
-- `notebook_backend_services_and_commons_testing.md` — Backend and commons testing: Jasmine config, shared test utilities, backend test patterns, entry hierarchy test data
+## Server Port
+
+If a file `.sstor/.port` exists in the project root, it contains the port number of the local dev server. Read this file at the start of the workflow and pass the port to sub-agents that may need to access the running application (e.g. for browser-based testing or reproduction via Chrome MCP tools). Tell the sub-agent: "The local dev server is running at `http://localhost:<port>`."
 
 ## Phase Output Files
 
