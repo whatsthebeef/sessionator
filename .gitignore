@@ -4,3 +4,7 @@
 .claude/*
 !.claude/commands/
 !.claude/agents/
+!.claude/settings.json
+
+### sstor ###
+.sstor/.port

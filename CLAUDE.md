@@ -14,11 +14,10 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 ### Running
 
 ```
-/run-task                                     # Full run from phase 1 (claims next Ready task)
-/run-task --task F1S1T1                       # Start a specific task
-/run-task --bug B1                            # Start fixing a specific bug
-/run-task --from 3 --task F1S1T1              # Restart task from phase 3
-/run-task --from 3 --bug B1                   # Restart bug from phase 3
+/run-task --task N2-123                       # Start a specific task
+/run-task --bug N2-456                        # Start fixing a specific bug
+/run-task --from 3 --task N2-123              # Restart task from phase 3
+/run-task --from 3 --bug N2-456              # Restart bug from phase 3
 ```
 
 ## Task Sheet Structure
@@ -80,11 +79,10 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 ### Running
 
 ```
-/run-task                                     # Full run from phase 1 (claims next Ready task)
-/run-task --task F1S1T1                       # Start a specific task
-/run-task --bug B1                            # Start fixing a specific bug
-/run-task --from 3 --task F1S1T1              # Restart task from phase 3
-/run-task --from 3 --bug B1                   # Restart bug from phase 3
+/run-task --task N2-123                       # Start a specific task
+/run-task --bug N2-456                        # Start fixing a specific bug
+/run-task --from 3 --task N2-123              # Restart task from phase 3
+/run-task --from 3 --bug N2-456              # Restart bug from phase 3
 ```
 
 ## Task Sheet Structure

@@ -53,63 +53,76 @@ You will receive:
 
 **For bugs:** Identify the root cause location, what the correct behaviour should be, and what changes are needed to fix it without introducing regressions.
 
-### 3. Produce the Plan
+### 3. Produce Proposals
 
-Write the plan to the **output path** provided.
+Write one or more **high-level proposals** to the **output path** provided. If there is only one clear approach that makes sense, present just that one. If there are meaningfully different approaches (not minor variations), present up to 3. Include a recommendation.
 
 **For tasks, use this format:**
 
 ```
-Implementation Plan
+# Investigation: <id> — <short title>
 
-Goal:
+## Goal
 <1-2 sentence overview of what will be built and why>
 
-Acceptance criteria:
-- <criterion> -> <how it will be satisfied>
-- <criterion> -> <how it will be satisfied>
+## Acceptance Criteria Mapping
+- <criterion> -> <brief approach>
 
-Relevant files:
+## Relevant Files
 - <file path> — <why it's relevant>
 
-Proposed changes:
-- <specific, actionable description of a change>
+## Proposals
 
-Constraints:
+### Proposal A: <short name>
+<2-3 sentence summary of the approach>
+- Changes: <bullet list of specific changes>
+- Pros: <advantages>
+- Cons: <disadvantages>
+- Complexity: Low / Medium / High
+
+### Proposal B: <short name> (only if meaningfully different from A)
+...
+
+## Recommendation
+<which proposal and why — consider codebase patterns, risk, and complexity>
+
+## Constraints
 - <technical constraint, pattern to follow, or dependency>
 
-Risks / unknowns:
+## Risks / Unknowns
 - <anything that could go wrong or needs clarification>
-
-Recommended next step:
-<the single most important thing to do first>
 ```
 
 **For bugs, use this format:**
 
 ```
-Bug Fix Plan
+# Investigation: <id> — <short title>
 
-Bug: <id>
-Reproduction: <CONFIRMED / UNCONFIRMED — describe what was found>
-
-Root cause:
+## Root Cause
 <detailed explanation of why the bug occurs, referencing specific code>
 
-Relevant files:
+## Reproduction: CONFIRMED / UNCONFIRMED
+<describe what was found>
+
+## Relevant Files
 - <file path> — <why it's relevant>
 
-Proposed fix:
-- <specific, actionable description of each change>
+## Proposals
 
-Regression risk:
-- <what could break as a side effect of this fix>
+### Proposal A: <short name>
+<2-3 sentence summary of the fix approach>
+- Changes: <bullet list of specific changes>
+- Regression risk: <what could break>
+- Complexity: Low / Medium / High
 
-Regression test:
+### Proposal B: <short name> (only if meaningfully different from A)
+...
+
+## Recommendation
+<which proposal and why>
+
+## Regression Test
 - <describe the test that should be written to prevent this bug from recurring>
-
-Recommended next step:
-<the single most important thing to do first>
 ```
 
 ## Guidelines

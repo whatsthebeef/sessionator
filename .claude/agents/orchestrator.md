@@ -19,48 +19,25 @@ The workflow is the same for both, but the context passed to sub-agents differs.
 ## Inputs
 
 You receive:
-- A **web app URL** for the task sheet API (from the `TASK_APP_URL` environment variable, or provided by the user)
-- An **API key** for authentication (from the `TASK_APP_KEY` environment variable)
 - Optionally: a **starting phase** (1–6) to resume from. Default is phase 1.
-- Optionally: a **task ID** or **bug ID** (so you don't need to pick a new task).
+- Optionally: a **Jira issue key** (e.g. `N2-123`) — so you don't need to search for a task.
 
-## Task Sheet API
+## Jira Integration
 
-Interact with the task sheet via the web app URL. **All requests must include the `key` parameter** with the value of the `TASK_APP_KEY` environment variable.
+All task/bug management is done via the Atlassian Jira MCP tools. Read `.sstor/sstor.conf` to get the `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY` values at the start of the workflow.
 
-Use `curl -L` (follow redirects) for GET requests. For POST requests, use `curl -L --post301 --post302 --post303` to preserve the POST method and body through Google's 302 redirects.
+### Fetching an Issue
 
-**IMPORTANT**: Do **NOT** use shell variable substitution (`$TASK_APP_URL`, `$TASK_APP_KEY`, `${...}`, `"$..."`, `'"$..."'`) in any curl command. The sandbox blocks all forms of `$` substitution and will prompt the user every time.
+Use `mcp__atlassian-rovo__getJiraIssue` with `responseContentFormat: "markdown"` to fetch a specific issue:
+- `cloudId`: from `JIRA_CLOUD_ID` in `.sstor/sstor.conf`
+- `issueIdOrKey`: the Jira key (e.g. `N2-123`)
+- `fields`: `["summary", "description", "status", "issuetype", "priority", "labels", "comment"]`
 
-Instead: read the env vars once at the start of the workflow (`echo $TASK_APP_URL` and `echo $TASK_APP_KEY`), copy the literal values, and paste them directly into every subsequent curl command as hardcoded strings.
+The issue type (`Bug`, `Story`, `Task`) determines the work item type.
 
-**Claim next task** (used in phase 1 when no task ID is specified):
-```
-curl -L --post301 --post302 --post303 -H "Content-Type: application/json" -d '{"action": "claim_next", "key": "<TASK_APP_KEY>"}' "<TASK_APP_URL>"
-```
-Returns the oldest Ready task (FIFO by date_created), atomically setting it to Working:
-```json
-{"id": "F1S1T1", "name": "...", "description": "...", "acceptance_criteria": "...", "notes": "...", "dev_notes": "...", "status": "Working"}
-```
-Returns `{"error": "No Ready tasks found"}` with 404 if none available.
+### Finishing an Issue
 
-**Get specific task** (used in phase 1 when a task ID is provided):
-```
-curl -L "<TASK_APP_URL>?action=get_task_data&taskId=<id>&key=<TASK_APP_KEY>"
-```
-Returns the full task object for the given ID.
-
-**Get bug** (used in phase 1 when a bug ID is provided):
-```
-curl -L "<TASK_APP_URL>?action=get_bug_data&bugId=<id>&key=<TASK_APP_KEY>"
-```
-Returns `{ bug: { id, steps_to_reproduce, expected, actual, environment, reporter, dateCreated, dateUpdated, notes, additional_notes } }`.
-
-**Finish task** (used in phase 6):
-```
-curl -L --post301 --post302 --post303 -H "Content-Type: application/json" -d '{"action": "finish_task", "taskId": "F1S1T1", "key": "<TASK_APP_KEY>"}' "<TASK_APP_URL>"
-```
-Returns `{"taskId": "F1S1T1", "status": "Finished"}`.
+Use `mcp__atlassian-rovo__transitionJiraIssue` to transition the issue to "Done" (call `getTransitionsForJiraIssue` first to get the transition ID).
 
 ## Reference Docs
 
@@ -90,7 +67,7 @@ When invoking **any** sub-agent, always include this instruction in the prompt:
 
 ## Workflow
 
-**Before starting any phase**, resolve the API credentials by reading the `TASK_APP_URL` and `TASK_APP_KEY` environment variables. If either is missing, ask the user. Use both values in every API call throughout the workflow.
+**Before starting any phase**, read `.sstor/sstor.conf` to get `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`. These are needed for all Jira MCP tool calls.
 
 Run all phases sequentially from start to finish without pausing. Only stop early if you encounter a serious blocker (e.g., the task is fundamentally unclear, a critical dependency is missing, or a phase fails in a way that makes continuing pointless). In that case, explain the problem and stop.
 
@@ -100,22 +77,14 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
 
 ### Phase 1: Pick a Work Item
 
-1. Determine the work item type:
-   - If a **bug ID** was provided (IDs starting with `B`):
-     - GET `<web-app-url>?action=get_bug_data&bugId=<id>&key=<TASK_APP_KEY>` to fetch the bug.
-     - Set `type = bug`.
-   - If a **task ID** was provided:
-     - GET `<web-app-url>?action=get_task_data&taskId=<id>&key=<TASK_APP_KEY>` to fetch the task.
-     - Set `type = task`.
-   - If neither was provided:
-     - POST `{"action": "claim_next", "key": "<TASK_APP_KEY>"}` to the web app URL.
-     - Set `type = task`.
-   - If a specific task ID or bug ID was provided and the fetch fails (not found, network error, auth error), **stop immediately and report the error to the user**. Never fall back to `claim_next` — the user asked for a specific item.
-2. Create a feature branch: `<type>/<id>-<slug>` where `<slug>` is a short kebab-case summary (max 5 words).
-3. Write `.reviews/<type>-<id>-context.md` containing all fields from the response and the branch name.
-   - For **tasks**: id, name, description, acceptance_criteria, notes, dev_notes
-   - For **bugs**: id, steps_to_reproduce, expected, actual, environment, reporter, notes, additional_notes
-4. **Ask clarifying questions** before moving on. The goal is to surface anything that would lead to a better, more architecturally sound solution:
+1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
+2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue` (cloudId, issueIdOrKey, responseContentFormat: "markdown"). If the fetch fails, **stop immediately and report the error**.
+3. Determine `type` from the issue type: `Bug` → `bug`, `Story`/`Task` → `task`.
+4. Create a feature branch: `<type>/<issueKey>-<slug>` where `<slug>` is a short kebab-case summary (max 5 words) derived from the issue summary.
+5. Write `.reviews/<type>-<issueKey>-context.md` containing:
+   - For **tasks**: issue key, summary, description, acceptance criteria (from description), labels, comments
+   - For **bugs**: issue key, summary, description (contains steps to reproduce, expected/actual), environment, comments
+6. **Ask clarifying questions** before moving on. The goal is to surface anything that would lead to a better, more architecturally sound solution:
    - Read the task/bug alongside the repo's existing patterns (CLAUDE.md, reference docs, nearby code) and identify genuine ambiguities, architectural forks, or missing constraints. Examples: integration points that could live in multiple places, data-model choices, error-handling strategy, backwards-compat concerns, performance expectations, UX edge cases, test boundaries.
    - Use the `AskUserQuestion` tool to ask up to 4 short, high-leverage questions with multiple-choice options where possible. Skip anything obvious from the description, acceptance criteria, or code — only ask what meaningfully changes the plan.
    - If nothing is genuinely unclear, skip this step entirely. Do not ask filler questions.
@@ -132,14 +101,19 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
    - Current repo structure (provide a file tree or summary)
    - Relevant reference doc paths
    - If Chrome MCP tools are available, mention this — the investigator may plan browser-based reproduction steps.
-3. The investigator writes its plan to `.reviews/<type>-<id>-plan.md`.
-4. Proceed to phase 3.
+3. The investigator writes its proposals to `.reviews/<type>-<id>-plan.md`.
+4. Read the proposals file and present a concise summary to the user:
+   - List each proposal with its name, 1-line summary, complexity, and key trade-off.
+   - State which proposal the investigator recommended.
+   - Ask the user to select a proposal (or provide further instructions).
+5. Once the user selects a proposal, append a `## Selected Proposal` section to `.reviews/<type>-<id>-plan.md` recording the choice and any additional instructions from the user.
+6. Proceed to phase 3.
 
 ### Phase 3: Implementation
 
-1. Read `.reviews/<type>-<id>-context.md` and `.reviews/<type>-<id>-plan.md`.
+1. Read `.reviews/<type>-<id>-context.md` and `.reviews/<type>-<id>-plan.md` (including the `## Selected Proposal` section).
 2. Invoke the **implementer** agent with:
-   - The implementation plan (contents of the plan file)
+   - The selected proposal and any additional user instructions from the plan file
    - **For tasks**: Dev Notes, task description and acceptance criteria
    - **For bugs**: Steps to reproduce, expected/actual behaviour, notes. **Clearly state this is a bug fix** — the implementer should fix the root cause identified in the plan, not just the symptoms.
    - **Clarifications** section from the context file (if present) — pass verbatim; these answers override any conflicting assumptions.
@@ -192,8 +166,8 @@ For each review round (up to 3):
 
 ### Phase 6: Finalise
 
-1. Stage all changes with `git add -A` but do **NOT** commit. The user will review and commit manually.
-2. POST `{"action": "finish_task", "taskId": "<id>", "key": "<TASK_APP_KEY>"}` to the web app URL to set the status to Finished.
+1. Stage code changes but **exclude** `.reviews/` files: `git add -A && git reset HEAD .reviews/`. Do **NOT** commit. The user will review and commit manually.
+2. Transition the Jira issue to "Done" using `mcp__atlassian-rovo__transitionJiraIssue` (use `getTransitionsForJiraIssue` first to find the transition ID for "Done").
 3. Do **NOT** push to remote or create a pull request.
 
 ### Error Handling
