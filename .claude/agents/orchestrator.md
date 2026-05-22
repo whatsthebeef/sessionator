@@ -19,8 +19,9 @@ The workflow is the same for both, but the context passed to sub-agents differs.
 ## Inputs
 
 You receive:
+- A **mode**: `task`, `bug`, `prompt`, or `review`.
 - Optionally: a **starting phase** (1–6) to resume from. Default is phase 1.
-- Optionally: a **Jira issue key** (e.g. `N2-123`) — so you don't need to search for a task.
+- Optionally: a **Jira issue key** (e.g. `N2-123`).
 
 ## Jira Integration
 
@@ -37,15 +38,19 @@ The issue type (`Bug`, `Story`, `Task`) determines the work item type.
 
 ### Finishing an Issue
 
-Use `mcp__atlassian-rovo__transitionJiraIssue` to transition the issue to "Done" (call `getTransitionsForJiraIssue` first to get the transition ID).
+Use `mcp__atlassian-rovo__transitionJiraIssue` to transition the issue to "Doing" (call `getTransitionsForJiraIssue` first to get the transition ID).
 
 ## Reference Docs
 
 The `.sstor/docs/` directory in the project root contains project-specific reference material. Read `.sstor/docs/index.md` to see the available docs and their descriptions. Select the docs relevant to the task and include their full paths in each sub-agent's prompt. **Always** pass any docs with "conventions" in the name to the change_reviewer.
 
-## Server Port
+## Server URL & Browser Testing
 
-If a file `.sstor/.port` exists in the project root, it contains the port number of the local dev server. Read this file at the start of the workflow and pass the port to sub-agents that may need to access the running application (e.g. for browser-based testing or reproduction via Chrome MCP tools). Tell the sub-agent: "The local dev server is running at `http://localhost:<port>`."
+If a file `.sstor/.url` exists in the project root, it contains the URL of the local dev server (e.g. `https://local.thepocketlab.com:4201` or `http://localhost:3000`). Read this file at the start of the workflow.
+
+When passing the URL to sub-agents, include these instructions:
+
+> **Browser testing**: The local dev server is running at `<url>`. Use `mcp__chrome-devtools__new_page` to open a new Chrome tab to this URL. Use the Chrome DevTools MCP tools to interact with the page, inspect the DOM, read console messages, and verify behaviour visually. If you need credentials to log in, check the console output or ask the user via `AskUserQuestion`.
 
 ## Phase Output Files
 
@@ -77,6 +82,13 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
 
 ### Phase 1: Pick a Work Item
 
+**If `mode = prompt`** (a free-text description was provided instead of a Jira key):
+1. Set `type = task` and `id = prompt-<timestamp>` (use the instance/branch name).
+2. Create a feature branch: `task/<slug>` where `<slug>` is a short kebab-case summary (max 5 words) derived from the prompt.
+3. Write `.reviews/task-<id>-context.md` with the prompt text as the description. There are no Jira fields — the prompt is the entire context.
+4. Skip to step 6 (clarifying questions).
+
+**If a Jira issue key was provided:**
 1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
 2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue` (cloudId, issueIdOrKey, responseContentFormat: "markdown"). If the fetch fails, **stop immediately and report the error**.
 3. Determine `type` from the issue type: `Bug` → `bug`, `Story`/`Task` → `task`.
@@ -167,8 +179,60 @@ For each review round (up to 3):
 ### Phase 6: Finalise
 
 1. Stage code changes but **exclude** `.reviews/` files: `git add -A && git reset HEAD .reviews/`. Do **NOT** commit. The user will review and commit manually.
-2. Transition the Jira issue to "Done" using `mcp__atlassian-rovo__transitionJiraIssue` (use `getTransitionsForJiraIssue` first to find the transition ID for "Done").
+2. If a Jira issue key was provided (not prompt mode), transition the issue to "Doing" using `mcp__atlassian-rovo__transitionJiraIssue` (use `getTransitionsForJiraIssue` first to find the transition ID).
 3. Do **NOT** push to remote or create a pull request.
+
+---
+
+## Review-Only Workflow (`mode = review`)
+
+When `mode = review`, skip the standard phases and run a review-only workflow. This is for Jira issues that have already been implemented — **do NOT modify any code**.
+
+### Step 1: Fetch Context
+
+1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
+2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue`.
+3. Determine `type` from the issue type.
+4. Examine all commits on the current branch vs `master` using `git log master..HEAD --oneline` to understand what was implemented.
+5. Write `.reviews/<type>-<issueKey>-context.md` with the issue details and commit summary.
+
+### Step 2: Code Review
+
+Invoke the **change_reviewer** agent in **standalone review mode** with:
+- The issue details (summary, description, type)
+- `mode = standalone_review` — the reviewer must NOT suggest code modifications, only report findings
+- All commits on the branch (`git log master..HEAD`)
+- **Always** pass any docs with "conventions" in the name from `.sstor/docs/`
+- The server URL from `.sstor/.url` (if available)
+
+The reviewer writes findings to `.reviews/<type>-<issueKey>.md`.
+
+### Step 3: Build & Quality Checks
+
+After the code review, invoke the **change_reviewer** agent again (or continue the same invocation) to run quality checks. The reviewer must run all of the following and include results in the review output:
+
+```bash
+corepack yarn workspaces foreach -Ap run build
+corepack yarn workspaces foreach -Ap run test
+corepack yarn workspaces foreach -Ap run lint
+```
+
+Also check for:
+- `corepack yarn npm audit` warnings
+- `corepack yarn install --immutable` warnings (detects out-of-sync lockfile)
+- Any modifications to `yarn.lock` on the branch (`git diff master..HEAD -- yarn.lock`)
+
+Append all results to `.reviews/<type>-<issueKey>.md`.
+
+### Step 4: Report
+
+Present a summary of the review to the user:
+- Total in-scope items and suggestions
+- Build/test/lint pass/fail
+- Any audit or lockfile warnings
+- Overall verdict: APPROVED / CHANGES_REQUIRED
+
+---
 
 ### Error Handling
 
@@ -180,6 +244,6 @@ If any phase fails:
 ## Communication Style
 
 - Report brief progress at each phase transition (e.g., "Phase 2 complete. Proceeding to implementation.").
-- At the end of the full run, summarize what was done across all phases and provide the PR URL.
+- At the end of the full run, summarize what was done across all phases.
 - If restarting from a phase, note which output files were read and whether any had been edited.
 - Only stop mid-workflow if there is a serious blocker — explain the problem clearly and suggest what the user should do.

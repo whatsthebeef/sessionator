@@ -78,13 +78,12 @@ You operate in one of two modes depending on what you receive:
 
 ## Smoke Checks
 
-Run quick checks to catch obvious errors during development:
+After completing all changes, **always** run a full workspace build to verify nothing is broken:
 ```bash
-npm run lint          # linting
-npm run typecheck     # type checking (if TypeScript)
+corepack yarn workspaces foreach -Ap run build
 ```
 
-If you're unsure which commands are available, check `package.json` scripts or the project's CLAUDE.md. Do NOT run the full test suite (`npm test`) — that's the unit_test_writer agent's job.
+If you're unsure which commands are available, check `package.json` scripts or the project's CLAUDE.md. Do NOT run the full test suite — that's the unit_test_writer agent's job.
 
 ## Error Handling
 

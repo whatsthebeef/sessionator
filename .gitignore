@@ -1,10 +1,12 @@
 .claude/settings.local.json
+.claude/settings.json
 
 ### claude ###
 .claude/*
 !.claude/commands/
 !.claude/agents/
-!.claude/settings.json
+!.claude/CLAUDE.md
 
 ### sstor ###
-.sstor/.port
+.sstor/.url
+.sstor/.server-wrapper.sh

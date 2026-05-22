@@ -19,14 +19,15 @@ You will receive:
 
 ## Process
 
-### 1. Discover and Run Existing Tests
+### 1. Build and Run Existing Tests
 
-1. Identify the project's test commands by checking `package.json`, `CLAUDE.md`, or common conventions.
-2. Run the full test suite:
+1. Run a full workspace build to ensure everything compiles:
    ```bash
-   npm test              # unit / integration tests
-   npm run lint          # linting
-   npm run typecheck     # type checking (if TypeScript)
+   corepack yarn workspaces foreach -Ap run build
+   ```
+2. Run the full workspace test suite:
+   ```bash
+   corepack yarn workspaces foreach -Ap run test
    ```
 3. Record all results — passes, failures, and errors.
 4. If any pre-existing tests fail, determine whether the failure is caused by the new changes or was pre-existing.
@@ -112,7 +113,16 @@ Write to `.reviews/task-<id>-tests.md`:
 - **Verdict**: PASS / FAIL
 ```
 
-### 6. Return Decision
+### 6. Browser Verification
+
+If a server URL was provided by the orchestrator:
+1. Open a new Chrome tab using `mcp__chrome-devtools__new_page` with the server URL.
+2. If login is required, ask the user for credentials via `AskUserQuestion`.
+3. Navigate to the relevant pages and verify the changes work visually.
+4. Check the browser console for errors using `mcp__chrome-devtools__list_console_messages`.
+5. Add a `## Browser Verification` section to the test report with findings (PASS/FAIL and any issues observed).
+
+### 7. Return Decision
 
 Return to the orchestrator:
 - **`PASS`** — All acceptance criteria are covered by tests, all tests pass, no new failures.

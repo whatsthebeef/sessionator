@@ -13,6 +13,8 @@ DERGE=false
 SYNC=false
 TASK=""
 BUG=""
+PROMPT=""
+REVIEW=""
 PROJECT=""
 INSTANCE=""
 
@@ -35,6 +37,10 @@ while [[ $# -gt 0 ]]; do
     --task) TASK="$2"; shift ;;
     --bug=*) BUG="${1#--bug=}" ;;
     --bug) BUG="$2"; shift ;;
+    --prompt=*) PROMPT="${1#--prompt=}" ;;
+    --prompt) PROMPT="$2"; shift ;;
+    --review=*) REVIEW="${1#--review=}" ;;
+    --review) REVIEW="$2"; shift ;;
     -r|--reload)
       set +u
       source ~/.bash_profile
@@ -64,6 +70,8 @@ Session management:
 Claude agent workflow:
   --task <key>            Create instance for a Jira issue (Story/Task), launch orchestrator
   --bug <key>             Create instance for a Jira issue (Bug), launch orchestrator
+  --review <key>          Create instance to review an already-implemented Jira issue
+  --prompt "<text>"       Create instance with free-text description, launch orchestrator
 
 Config:
   --sync                  Re-merge Claude config (.claude/) into project/instance
@@ -286,7 +294,8 @@ print('  settings.local.json merged')
 !.claude/commands/
 
 ### sstor ###
-.sstor/.port
+.sstor/.url
+.sstor/.server-wrapper.sh
 GI
     echo "  Created .gitignore with claude/sstor entries"
   else
@@ -299,8 +308,8 @@ GI
       printf '!.claude/commands/\n' >> "$target_gitignore"
       changed=true
     fi
-    if ! grep -qF '.sstor/.port' "$target_gitignore"; then
-      printf '\n### sstor ###\n.sstor/.port\n' >> "$target_gitignore"
+    if ! grep -qF '.sstor/.url' "$target_gitignore"; then
+      printf '\n### sstor ###\n.sstor/.url\n.sstor/.server-wrapper.sh\n' >> "$target_gitignore"
       changed=true
     fi
     if $changed; then
@@ -325,23 +334,35 @@ if $SYNC; then
     exit 1
   fi
   merge_claude_config "$SYNC_TARGET"
+  set +u
+  source ~/.bash_profile
+  set -u
+  tmux source-file ~/.tmux.conf 2>/dev/null || true
+  echo "Configs reloaded"
   exit 0
 fi
 
-# --task / --bug imply an instance name
+# --task / --bug / --prompt / --review imply an instance name
 if [[ -n "$TASK" ]]; then
   INSTANCE="$TASK"
 elif [[ -n "$BUG" ]]; then
   INSTANCE="$BUG"
+elif [[ -n "$REVIEW" ]]; then
+  INSTANCE="review-${REVIEW}"
+elif [[ -n "$PROMPT" ]]; then
+  # Build slug from first 5 words of prompt
+  SLUG=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//;s/-$//' | cut -d'-' -f1-5)
+  INSTANCE="prompt-${SLUG}"
 fi
 
-# Kill server process on the port from .sstor/.port and clean up the file
+# Kill server process on the port from .sstor/.url and clean up
 cleanup_server() {
   local dir="$1"
-  local port_file="$dir/.sstor/.port"
-  if [[ -f "$port_file" ]]; then
-    local port
-    port=$(cat "$port_file")
+  local url_file="$dir/.sstor/.url"
+  if [[ -f "$url_file" ]]; then
+    local url port
+    url=$(cat "$url_file")
+    port=$(echo "$url" | grep -oE ':[0-9]+' | tr -d ':')
     if [[ -n "$port" ]]; then
       local pids
       pids=$(lsof -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null) || true
@@ -350,8 +371,9 @@ cleanup_server() {
         echo "Killed server on port $port"
       fi
     fi
-    rm -f "$port_file"
+    rm -f "$url_file"
   fi
+  rm -f "$dir/.sstor/.server-wrapper.sh"
 }
 
 # Kill session and switch to next available
@@ -570,6 +592,11 @@ if [[ -n "$INSTANCE" ]]; then
   if [[ ! -d "$WORKTREE_DIR" ]]; then
     mkdir -p "$HOME/dev/${PROJECT}__worktrees"
     git -C "$REPO_DIR" worktree add "$WORKTREE_DIR" -b "$SESSION"
+    # Copy certs directory if it exists in the main repo
+    if [[ -d "$REPO_DIR/certs" ]]; then
+      cp -r "$REPO_DIR/certs" "$WORKTREE_DIR/certs"
+      echo "Copied certs from main repo"
+    fi
     NEW_SETUP=true
   fi
 
@@ -611,15 +638,35 @@ if [[ -z "$SERVER_CMD" ]] && [[ -f "$SSTOR_CONF" ]]; then
       echo "Server port: $PORT"
       # Replace {PORT} placeholder in command
       _CONF_SERVER_CMD="${_CONF_SERVER_CMD//\{PORT\}/$PORT}"
-      # Write port file so orchestrator/sub-agents can find it
-      mkdir -p "$START_DIR/.sstor"
-      echo "$PORT" > "$START_DIR/.sstor/.port"
     fi
+
+    # Build the full server command
     if [[ -n "$_CONF_SERVER_BUILD" ]]; then
-      SERVER_CMD="$_CONF_SERVER_BUILD && $_CONF_SERVER_CMD"
+      _FULL_CMD="$_CONF_SERVER_BUILD && $_CONF_SERVER_CMD"
     else
-      SERVER_CMD="$_CONF_SERVER_CMD"
+      _FULL_CMD="$_CONF_SERVER_CMD"
     fi
+
+    # Write a wrapper script that runs the server and captures the URL from output
+    mkdir -p "$START_DIR/.sstor"
+    URL_FILE="$START_DIR/.sstor/.url"
+    WRAPPER="$START_DIR/.sstor/.server-wrapper.sh"
+    cat > "$WRAPPER" <<WRAP
+#!/bin/bash
+URL_FILE="$URL_FILE"
+rm -f "\$URL_FILE"
+$_FULL_CMD 2>&1 | while IFS= read -r line; do
+  echo "\$line"
+  if [[ -z "\$(cat "\$URL_FILE" 2>/dev/null)" ]]; then
+    url=\$(echo "\$line" | grep -oE 'https?://local[a-zA-Z0-9._-]*(:[0-9]+)?' | head -1)
+    if [[ -n "\$url" ]]; then
+      echo "\$url" > "\$URL_FILE"
+    fi
+  fi
+done
+WRAP
+    chmod +x "$WRAPPER"
+    SERVER_CMD="bash $WRAPPER"
   fi
 fi
 
@@ -645,6 +692,10 @@ if [[ -n "$TASK" ]]; then
   tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --task $TASK'" C-m
 elif [[ -n "$BUG" ]]; then
   tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --bug $BUG'" C-m
+elif [[ -n "$REVIEW" ]]; then
+  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --review $REVIEW'" C-m
+elif [[ -n "$PROMPT" ]]; then
+  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --prompt \"$PROMPT\"'" C-m
 else
   tmux send-keys -t "$SESSION":$WINDOW 'claude --continue' C-m
 fi

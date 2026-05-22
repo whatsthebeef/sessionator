@@ -199,19 +199,13 @@ fileviewer *.avi,*.mp4,*.wmv,*.dat,*.3gp,*.ogv,*.mkv,*.mpg,*.vob
          \ ffprobe -pretty %c 2>&1
 
 " Web
-filetype *.html,*.htm links,mozilla,uzbl-browser %f %i &
+filetype *.html,*.htm open -a 'Google Chrome' %f &
 
 " Object
 filetype *.o nm %f | less
 
 " Image
-filextype *.bmp,*.jpg,*.jpeg,*.png,*.gif,*.xpm,*.ico
-        \ {View in sxiv}
-        \ sxiv,
-        \ {View in gpicview}
-        \ gpicview %c,
-        \ {View in Chrome}
-        \ open -a 'Google Chrome',
+filetype *.bmp,*.jpg,*.jpeg,*.png,*.gif,*.xpm,*.ico,*.svg open -a 'Google Chrome' %f &
 fileviewer *.bmp,*.jpg,*.jpeg,*.png,*.gif,*.xpm, *.ico convert -identify %f -verbose /dev/null
 
 " MD5

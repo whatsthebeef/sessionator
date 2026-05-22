@@ -1,24 +1,28 @@
 ---
 name: run-task
-description: Pick up the next Ready task or fix a specific bug, running the full agent workflow (investigate → implement → test → review → PR), or restart from a specific phase.
+description: Run the full agent workflow for a task, bug, review, or free-text prompt (investigate → implement → test → review), or restart from a specific phase.
 user_invocable: true
 ---
 
 # Run Task
 
-Pick up and execute the next available task, fix a specific bug, or resume from a specific phase.
+Execute a task, fix a bug, review existing changes, or work from a free-text prompt.
 
 ## Usage
 
 ```
 /run-task --task <jira-key>
 /run-task --bug <jira-key>
+/run-task --review <jira-key>
+/run-task --prompt "<description>"
 /run-task --from <phase> --task <jira-key>
 /run-task --from <phase> --bug <jira-key>
 ```
 
-- `--task <jira-key>` — Jira issue key for a Story/Task (e.g. `N2-123`). Required.
-- `--bug <jira-key>` — Jira issue key for a Bug (e.g. `N2-456`). Required.
+- `--task <jira-key>` — Jira issue key for a Story/Task (e.g. `N2-123`).
+- `--bug <jira-key>` — Jira issue key for a Bug (e.g. `N2-456`).
+- `--review <jira-key>` — Jira issue key for an already-implemented card to review (no code changes, review only).
+- `--prompt "<description>"` — Free-text description used in place of a Jira issue.
 - `--from <phase>` — Resume from phase 1–6. Default is 1.
 
 ### Examples
@@ -26,8 +30,9 @@ Pick up and execute the next available task, fix a specific bug, or resume from 
 ```
 /run-task --task N2-123                   # Start a specific task from phase 1
 /run-task --bug N2-456                    # Start fixing a specific bug from phase 1
+/run-task --review N2-789                 # Review an already-implemented card
+/run-task --prompt "Add a loading spinner to the dashboard page"
 /run-task --from 3 --task N2-123          # Resume task N2-123 from implementation
-/run-task --from 3 --bug N2-456           # Resume bug N2-456 from implementation
 ```
 
 ## Instructions
@@ -36,21 +41,23 @@ You are invoking the orchestrator workflow. Follow these steps:
 
 1. **Parse arguments**
    - Extract `--from` phase number (default: 1).
-   - Extract `--task` Jira issue key or `--bug` Jira issue key (optional for phase 1, required if `--from` > 1).
-   - If resuming without `--task`/`--bug`, ask for the issue key.
+   - Extract `--task`, `--bug`, `--review`, or `--prompt`.
+   - If resuming without an identifier, ask for it.
 
 2. **Follow the Orchestrator workflow**
-   Read `.claude/agents/orchestrator.md` and follow its instructions directly (do NOT launch it as a sub-agent). The orchestrator workflow runs in the main session and launches the investigator, implementer, unit_test_writer, and change_reviewer as sub-agents.
+   Read `.claude/agents/orchestrator.md` and follow its instructions directly (do NOT launch it as a sub-agent). The orchestrator workflow runs in the main session and launches sub-agents.
 
-   Pass the starting phase and Jira issue key into the workflow.
+   - For `--task` or `--bug`: pass the starting phase and Jira issue key into the workflow.
+   - For `--review`: pass `mode = review` and the Jira issue key. The orchestrator runs the review-only workflow.
+   - For `--prompt`: pass `mode = prompt` and the description text. The orchestrator skips the Jira fetch in Phase 1 and uses the prompt as the context instead.
 
-4. **Report Results**
+3. **Report Results**
    When the workflow completes, report:
    - Task/Bug ID and description
-   - PR URL (if created)
    - Final status
    - Any errors or issues encountered
-   - Remind the user they can restart from any phase if the result isn't satisfactory
+   - For reviews: summary of findings and whether the review passed
+   - For tasks/bugs: remind the user they can restart from any phase if the result isn't satisfactory
 
 ## Phase Output Files
 
@@ -63,7 +70,7 @@ Each phase writes an output file to `.reviews/`. `<type>` is `task` or `bug`.
 | 3 | Implement the plan/fix | `.reviews/<type>-<id>-implementation.md` |
 | 4 | Write and run tests | `.reviews/<type>-<id>-tests.md` |
 | 5 | Review code changes | `.reviews/<type>-<id>.md` |
-| 6 | Create PR, update sheet | — |
+| 6 | Finalise | — |
 
 ### Restarting from a phase
 

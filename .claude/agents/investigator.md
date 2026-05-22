@@ -36,7 +36,7 @@ You will receive:
 
 **For bugs:**
 - Read the steps to reproduce, expected/actual behaviour, environment, and notes carefully.
-- **Attempt to reproduce the bug** by tracing the code path described in the steps to reproduce. If Chrome MCP tools are available, attempt browser-based reproduction.
+- **Attempt to reproduce the bug** by tracing the code path described in the steps to reproduce. If a server URL was provided, use `mcp__chrome-devtools__new_page` to open it in Chrome and follow the reproduction steps. If login is required, ask the user for credentials via `AskUserQuestion`. Check the console for errors with `mcp__chrome-devtools__list_console_messages`.
 - Identify the **root cause** — don't just find where the symptom appears, find *why* it happens.
 
 **For both:**
