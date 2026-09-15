@@ -26,10 +26,10 @@ PATH=${PATH}:${HOME}/.rvm/bin # Add RVM to PATH for scripting
 PATH=${ANDROID_HOME}/platform-tools:${PATH}
 PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
 PATH=/opt/homebrew/bin:$PATH
-PATH="$PATH:${HOME}/.nvm/versions/node/v18.19.1/bin"
 PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 PATH="/opt/homebrew/opt/libpq/bin:$PATH"
 PATH="$HOME/.config/scripts:$PATH"
+PATH="/Applications/Codex.app/Contents/Resources:$PATH"
 
 export PATH
 
@@ -134,7 +134,7 @@ alias mypgsql="/opt/homebrew/opt/postgresql@14/bin/postgres -D /opt/homebrew/var
 ##### Node
 
 # nodejs
-# nvm use 18.19
+nvm use 24 > /dev/null 2>&1
 
 ##### Git (symlinked from repo by install.sh)
 

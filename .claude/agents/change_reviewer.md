@@ -32,7 +32,7 @@ You will receive:
 - Run `git diff master...HEAD` to see all changes on the feature branch.
 - Run `git log master..HEAD --oneline` to understand the commit history.
 - Read each modified/created file in full to understand context.
-- In standard mode: read the unit_test_writer's report for test coverage context.
+- In standard mode: read the QA agent's report for test coverage context.
 
 ### 2. Review Against Requirements
 
@@ -56,22 +56,14 @@ Review the changes for:
 
 ### 4. Dependency & Lockfile Checks
 
-**Always** check for these and flag any issues:
-- **`yarn.lock` modifications**: Run `git diff master..HEAD -- yarn.lock` — flag any changes as `IN-SCOPE` with a note explaining what changed and whether it's expected
-- **`corepack yarn npm audit`**: Run and report any vulnerabilities found
-- **`corepack yarn install --immutable`**: Run to detect if the lockfile is out of sync with `package.json`
+**Always** check for these and flag any issues. Read the project's `build_test_lint` doc (passed by the orchestrator via `.sstor/docs/`) for the exact commands:
+- **Lockfile modifications**: Check for lockfile changes on the branch — flag any changes as `IN-SCOPE` with a note explaining what changed and whether it's expected
+- **Audit**: Run the project's audit command and report any vulnerabilities found
+- **Lockfile sync**: Run the project's immutable install check to detect if the lockfile is out of sync with `package.json`
 
 ### 5. Quality Checks (standalone review mode, or when requested)
 
-Run these checks and include full results in the review document:
-
-```bash
-corepack yarn workspaces foreach -Ap run build    # build all workspaces
-corepack yarn workspaces foreach -Ap run test     # run all tests
-corepack yarn workspaces foreach -Ap run lint     # lint all workspaces
-```
-
-Record pass/fail for each workspace and any errors or warnings.
+Read the project's `build_test_lint` doc for the exact build, test, and lint commands. Run all three and include full results in the review document. Record pass/fail for each workspace and any errors or warnings.
 
 ### 6. Browser Verification (if server URL provided)
 
@@ -170,4 +162,4 @@ Include a brief summary of findings.
 - **Don't repeat yourself**: If you flagged something in a previous round and it wasn't fixed, escalate the description but don't duplicate the entire entry.
 - **Accumulate the document**: Each round appends to the same file. Don't overwrite previous rounds.
 - **No code modifications in standalone review mode**: You are reviewing only. Do not edit, write, or create any source files.
-- **Never disable the sandbox**: Always run commands inside the sandbox. Do NOT set `dangerouslyDisableSandbox: true` on any Bash call.
+- **NEVER disable the sandbox**: Do NOT set `dangerouslyDisableSandbox: true` — ever, under any circumstances. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.

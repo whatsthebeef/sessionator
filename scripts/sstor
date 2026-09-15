@@ -11,6 +11,7 @@ LIST=false
 MERGE=false
 DERGE=false
 SYNC=false
+DEPLOY=false
 TASK=""
 BUG=""
 PROMPT=""
@@ -41,11 +42,13 @@ while [[ $# -gt 0 ]]; do
     --prompt) PROMPT="$2"; shift ;;
     --review=*) REVIEW="${1#--review=}" ;;
     --review) REVIEW="$2"; shift ;;
+    --deploy) DEPLOY=true ;;
     -r|--reload)
       set +u
       source ~/.bash_profile
       set -u
       tmux source-file ~/.tmux.conf 2>/dev/null || true
+      osascript -e 'tell application "Hammerspoon" to execute lua code "hs.reload()"' 2>/dev/null || true
       echo "Configs reloaded"
       exit 0
       ;;
@@ -70,17 +73,19 @@ Session management:
 Claude agent workflow:
   --task <key>            Create instance for a Jira issue (Story/Task), launch orchestrator
   --bug <key>             Create instance for a Jira issue (Bug), launch orchestrator
-  --review <key>          Create instance to review an already-implemented Jira issue
+  --review <key|sha>      Review a Jira issue or git commit (no code changes)
   --prompt "<text>"       Create instance with free-text description, launch orchestrator
+
+Deploy:
+  --deploy                Run the project's .sstor/deploy.sh script from the current branch
 
 Config:
   --sync                  Re-merge Claude config (.claude/) into project/instance
   -r, --reload            Reload bash profile and tmux config
 
-Project config:
-  Jira settings are read from .sstor/sstor.conf in the project root:
-    JIRA_CLOUD_ID         Atlassian cloud ID
-    JIRA_PROJECT_KEY      Jira project key (e.g. N2)
+Project config (.sstor/sstor.conf):
+  JIRA_CLOUD_ID           Atlassian cloud ID
+  JIRA_PROJECT_KEY        Jira project key (e.g. N2)
 HELP
       exit 0
       ;;
@@ -295,7 +300,6 @@ print('  settings.local.json merged')
 
 ### sstor ###
 .sstor/.url
-.sstor/.server-wrapper.sh
 GI
     echo "  Created .gitignore with claude/sstor entries"
   else
@@ -309,7 +313,7 @@ GI
       changed=true
     fi
     if ! grep -qF '.sstor/.url' "$target_gitignore"; then
-      printf '\n### sstor ###\n.sstor/.url\n.sstor/.server-wrapper.sh\n' >> "$target_gitignore"
+      printf '\n### sstor ###\n.sstor/.url\n' >> "$target_gitignore"
       changed=true
     fi
     if $changed; then
@@ -338,8 +342,33 @@ if $SYNC; then
   source ~/.bash_profile
   set -u
   tmux source-file ~/.tmux.conf 2>/dev/null || true
+  hs -c "hs.reload()" 2>/dev/null || true
   echo "Configs reloaded"
   exit 0
+fi
+
+# Trigger project deploy script
+if $DEPLOY; then
+  DEPLOY_SCRIPT="$REPO_DIR/.sstor/deploy.sh"
+  if [[ ! -x "$DEPLOY_SCRIPT" ]]; then
+    echo "No deploy script found at $DEPLOY_SCRIPT"
+    exit 1
+  fi
+
+  # Determine working directory
+  if [[ -n "$INSTANCE" ]]; then
+    DEPLOY_DIR="$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${INSTANCE}"
+  else
+    CURDIR="$(pwd)"
+    if [[ "$CURDIR" == *__worktrees/* ]]; then
+      DEPLOY_DIR="$CURDIR"
+    else
+      DEPLOY_DIR="$REPO_DIR"
+    fi
+  fi
+
+  cd "$DEPLOY_DIR"
+  exec "$DEPLOY_SCRIPT"
 fi
 
 # --task / --bug / --prompt / --review imply an instance name
@@ -373,7 +402,6 @@ cleanup_server() {
     fi
     rm -f "$url_file"
   fi
-  rm -f "$dir/.sstor/.server-wrapper.sh"
 }
 
 # Kill session and switch to next available
@@ -619,12 +647,14 @@ if [[ -z "$SERVER_CMD" ]] && [[ -f "$SSTOR_CONF" ]]; then
   _CONF_SERVER_BUILD=""
   _CONF_SERVER_CMD=""
   _CONF_PORT_BASE=""
+  _CONF_SERVER_URL_TEMPLATE=""
   while IFS='=' read -r key val; do
     val="${val%\"}" ; val="${val#\"}"  # strip quotes
     case "$key" in
       SERVER_BUILD) _CONF_SERVER_BUILD="$val" ;;
       SERVER_CMD)   _CONF_SERVER_CMD="$val" ;;
       PORT_BASE)    _CONF_PORT_BASE="$val" ;;
+      SERVER_URL_TEMPLATE) _CONF_SERVER_URL_TEMPLATE="$val" ;;
     esac
   done < "$SSTOR_CONF"
 
@@ -636,37 +666,23 @@ if [[ -z "$SERVER_CMD" ]] && [[ -f "$SSTOR_CONF" ]]; then
         PORT=$((PORT + 1))
       done
       echo "Server port: $PORT"
-      # Replace {PORT} placeholder in command
       _CONF_SERVER_CMD="${_CONF_SERVER_CMD//\{PORT\}/$PORT}"
+    fi
+
+    # Write the server URL
+    if [[ -n "$_CONF_SERVER_URL_TEMPLATE" ]] && [[ -n "$PORT" ]]; then
+      mkdir -p "$START_DIR/.sstor"
+      SERVER_URL="${_CONF_SERVER_URL_TEMPLATE//\{PORT\}/$PORT}"
+      echo "$SERVER_URL" > "$START_DIR/.sstor/.url"
+      echo "Server URL: $SERVER_URL"
     fi
 
     # Build the full server command
     if [[ -n "$_CONF_SERVER_BUILD" ]]; then
-      _FULL_CMD="$_CONF_SERVER_BUILD && $_CONF_SERVER_CMD"
+      SERVER_CMD="$_CONF_SERVER_BUILD && $_CONF_SERVER_CMD"
     else
-      _FULL_CMD="$_CONF_SERVER_CMD"
+      SERVER_CMD="$_CONF_SERVER_CMD"
     fi
-
-    # Write a wrapper script that runs the server and captures the URL from output
-    mkdir -p "$START_DIR/.sstor"
-    URL_FILE="$START_DIR/.sstor/.url"
-    WRAPPER="$START_DIR/.sstor/.server-wrapper.sh"
-    cat > "$WRAPPER" <<WRAP
-#!/bin/bash
-URL_FILE="$URL_FILE"
-rm -f "\$URL_FILE"
-$_FULL_CMD 2>&1 | while IFS= read -r line; do
-  echo "\$line"
-  if [[ -z "\$(cat "\$URL_FILE" 2>/dev/null)" ]]; then
-    url=\$(echo "\$line" | grep -oE 'https?://local[a-zA-Z0-9._-]*(:[0-9]+)?' | head -1)
-    if [[ -n "\$url" ]]; then
-      echo "\$url" > "\$URL_FILE"
-    fi
-  fi
-done
-WRAP
-    chmod +x "$WRAPPER"
-    SERVER_CMD="bash $WRAPPER"
   fi
 fi
 
@@ -709,6 +725,7 @@ WINDOW=$((WINDOW + 1))
 tmux new-window  -t "$SESSION":$WINDOW -n editor -c "$START_DIR"
 tmux send-keys   -t "$SESSION":$WINDOW "nvim -c 'Git | only'" C-m
 
+# Window 4: server (optional)
 # Window 4: server (optional)
 if [[ -n "$SERVER_CMD" ]]; then
   WINDOW=$((WINDOW + 1))

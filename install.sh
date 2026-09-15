@@ -9,3 +9,5 @@ ln -sfn "$REPO_DIR/scripts" ~/.config/scripts
 ln -sfn "$REPO_DIR/nvim" ~/.config/nvim
 ln -sf "$REPO_DIR/.gitconfig" ~/.gitconfig
 ln -sf "$REPO_DIR/.vifmrc" ~/.vifmrc
+mkdir -p ~/.hammerspoon
+ln -sf "$REPO_DIR/hammerspoon/init.lua" ~/.hammerspoon/init.lua

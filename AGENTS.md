@@ -1,6 +1,6 @@
 # Developer Agent System
 
-This repository uses a multi-agent workflow orchestrated by Claude Code. The orchestrator runs all phases end-to-end, interacting with the task sheet via a web app API. Each phase writes an output file to `.reviews/` so the user can review the result and restart from any phase if needed. Supports both **tasks** (features/enhancements) and **bugs** (defect reports).
+This repository uses a multi-agent workflow orchestrated by Codex. The orchestrator runs all phases end-to-end, interacting with the task sheet via a web app API. Each phase writes an output file to `.reviews/` so the user can review the result and restart from any phase if needed. Supports both **tasks** (features/enhancements) and **bugs** (defect reports).
 
 ## Workflow Overview
 
@@ -9,7 +9,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 3. **Phase 3** — Implement the plan/fix → `.reviews/<type>-<id>-implementation.md`
 4. **Phase 4** — Write and run tests → `.reviews/<type>-<id>-tests.md`
 5. **Phase 5** — Review code changes → `.reviews/<type>-<id>.md`
-6. **Phase 6** — Commit, push, attach review to Jira
+6. **Phase 6** — Create PR, update sheet
 
 ### Running
 
@@ -45,7 +45,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 ## Project Structure
 
 ```
-.claude/
+.Codex/
 ├── settings.json          # Permissions, sandbox config
 ├── agents/
 │   ├── orchestrator.md    # Main workflow — coordinates sub-agents
@@ -65,7 +65,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 <!-- implementation-agent-system -->
 # Developer Agent System
 
-This repository uses a multi-agent workflow orchestrated by Claude Code. The orchestrator runs all phases end-to-end, interacting with the task sheet via a web app API. Each phase writes an output file to `.reviews/` so the user can review the result and restart from any phase if needed. Supports both **tasks** (features/enhancements) and **bugs** (defect reports).
+This repository uses a multi-agent workflow orchestrated by Codex. The orchestrator runs all phases end-to-end, interacting with the task sheet via a web app API. Each phase writes an output file to `.reviews/` so the user can review the result and restart from any phase if needed. Supports both **tasks** (features/enhancements) and **bugs** (defect reports).
 
 ## Workflow Overview
 
@@ -74,7 +74,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 3. **Phase 3** — Implement the plan/fix → `.reviews/<type>-<id>-implementation.md`
 4. **Phase 4** — Write and run tests → `.reviews/<type>-<id>-tests.md`
 5. **Phase 5** — Review code changes → `.reviews/<type>-<id>.md`
-6. **Phase 6** — Commit, push, attach review to Jira
+6. **Phase 6** — Create PR, update sheet
 
 ### Running
 
@@ -110,7 +110,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 ## Project Structure
 
 ```
-.claude/
+.Codex/
 ├── settings.json          # Permissions, sandbox config
 ├── agents/
 │   ├── orchestrator.md    # Main workflow — coordinates sub-agents

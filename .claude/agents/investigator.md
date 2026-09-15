@@ -133,4 +133,4 @@ Write one or more **high-level proposals** to the **output path** provided. If t
 - **No `any` or type casting**: Plans must not propose using `any` or type casting. Use existing type definitions and generics from the project's type system.
 - **Don't over-engineer**: Plan only what's needed for this task. No speculative abstractions.
 - **Write to the output file**: The plan must be written to the output path, not just returned as text. The user will review and potentially edit it before the next phase runs.
-- **Never disable the sandbox**: Always run commands inside the sandbox. Do NOT set `dangerouslyDisableSandbox: true` on any Bash call.
+- **NEVER disable the sandbox**: Do NOT set `dangerouslyDisableSandbox: true` — ever, under any circumstances. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.

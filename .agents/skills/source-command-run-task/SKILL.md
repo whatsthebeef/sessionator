@@ -1,8 +1,13 @@
 ---
-name: run-task
-description: Run the full agent workflow for a task, bug, review, or free-text prompt (investigate → implement → test → review), or restart from a specific phase.
-user_invocable: true
+name: "source-command-run-task"
+description: "Run the full agent workflow for a task, bug, review, or free-text prompt (investigate → implement → test → review), or restart from a specific phase."
 ---
+
+# source-command-run-task
+
+Use this skill when the user asks to run the migrated source command `run-task`.
+
+## Command Template
 
 # Run Task
 
@@ -46,7 +51,7 @@ You are invoking the orchestrator workflow. Follow these steps:
    - If resuming without an identifier, ask for it.
 
 2. **Follow the Orchestrator workflow**
-   Read `.claude/agents/orchestrator.md` and follow its instructions directly (do NOT launch it as a sub-agent). The orchestrator workflow runs in the main session and launches sub-agents.
+   Read `.Codex/agents/orchestrator.md` and follow its instructions directly (do NOT launch it as a sub-agent). The orchestrator workflow runs in the main session and launches sub-agents.
 
    - For `--task` or `--bug`: pass the starting phase and Jira issue key into the workflow.
    - For `--review`: pass `mode = review` and the Jira issue key. The orchestrator runs the review-only workflow.
@@ -71,7 +76,7 @@ Each phase writes an output file to `.reviews/`. `<type>` is `task` or `bug`.
 | 3 | Implement the plan/fix | `.reviews/<type>-<id>-implementation.md` |
 | 4 | Write and run tests | `.reviews/<type>-<id>-tests.md` |
 | 5 | Review code changes | `.reviews/<type>-<id>.md` |
-| 6 | Commit, push, attach review to Jira | — |
+| 6 | Finalise | — |
 
 ### Restarting from a phase
 

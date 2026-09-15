@@ -10,6 +10,7 @@ require("config.coc")
 require("config.fzf")
 require("config.dap")
 require("config.supermaven")
+require("config.git-branch-files")
 
 ---------- General
 

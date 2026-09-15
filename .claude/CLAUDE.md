@@ -9,7 +9,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 3. **Phase 3** — Implement the plan/fix → `.reviews/<type>-<id>-implementation.md`
 4. **Phase 4** — Write and run tests → `.reviews/<type>-<id>-tests.md`
 5. **Phase 5** — Review code changes → `.reviews/<type>-<id>.md`
-6. **Phase 6** — Create PR, update sheet
+6. **Phase 6** — Commit, push, attach review to Jira
 
 ### Running
 
@@ -51,7 +51,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 │   ├── orchestrator.md    # Main workflow — coordinates sub-agents
 │   ├── investigator.md    # Analyzes task/bug, builds plan
 │   ├── implementer.md     # Implements the plan, fixes review items
-│   ├── unit_test_writer.md # Runs tests, writes missing tests
+│   ├── qa.md               # Builds, tests, writes missing tests, browser verification
 │   └── change_reviewer.md # Reviews code, classifies feedback
 ├── commands/
 │   └── run-task.md        # Entry point: /run-task

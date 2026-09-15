@@ -1,11 +1,11 @@
 ---
 name: orchestrator
-description: Main workflow instructions that run in the primary session. Coordinates the investigator, implementer, unit_test_writer, and change_reviewer sub-agents through the full task/bug lifecycle.
+description: Main workflow instructions that run in the primary session. Coordinates the investigator, implementer, qa, and change_reviewer sub-agents through the full task/bug lifecycle.
 ---
 
 # Orchestrator Workflow
 
-You are following the orchestrator workflow directly in the main session. Your job is to coordinate the full lifecycle of a **task** or **bug** through investigation, development, testing, review, and PR creation. You launch the investigator, implementer, unit_test_writer, and change_reviewer as **sub-agents**.
+You are following the orchestrator workflow directly in the main session. Your job is to coordinate the full lifecycle of a **task** or **bug** through investigation, development, testing, review, and PR creation. You launch the investigator, implementer, qa, and change_reviewer as **sub-agents**.
 
 ## Work Item Types
 
@@ -42,7 +42,11 @@ Use `mcp__atlassian-rovo__transitionJiraIssue` to transition the issue to "Doing
 
 ## Reference Docs
 
-The `.sstor/docs/` directory in the project root contains project-specific reference material. Read `.sstor/docs/index.md` to see the available docs and their descriptions. Select the docs relevant to the task and include their full paths in each sub-agent's prompt. **Always** pass any docs with "conventions" in the name to the change_reviewer.
+The `.sstor/docs/` directory in the project root contains project-specific reference material. Read `.sstor/docs/index.md` to see the available docs and their descriptions. Select the docs relevant to the task and include their full paths in each sub-agent's prompt.
+
+**Mandatory doc rules:**
+- **Always** pass any docs with "conventions" in the name to the change_reviewer.
+- **Always** pass the `build_test_lint` doc (if it exists) to the **implementer**, **qa**, and **change_reviewer**. This contains the project-specific commands for building, testing, linting, and dependency checks.
 
 ## Server URL & Browser Testing
 
@@ -61,14 +65,14 @@ Each phase writes its output to `.reviews/<type>-<id>-<phase>.md` where `<type>`
 | 1 | `.reviews/<type>-<id>-context.md` | ID, description/steps, acceptance criteria or expected/actual, notes, branch name |
 | 2 | `.reviews/<type>-<id>-plan.md` | Investigation plan from the investigator |
 | 3 | `.reviews/<type>-<id>-implementation.md` | Summary of changes made by the implementer |
-| 4 | `.reviews/<type>-<id>-tests.md` | Test report from the unit_test_writer |
+| 4 | `.reviews/<type>-<id>-tests.md` | Test report from the qa |
 | 5 | `.reviews/<type>-<id>.md` | Review findings from the change_reviewer |
 
 ## Sub-agent Rules
 
 When invoking **any** sub-agent, always include this instruction in the prompt:
 
-> **SANDBOX RULE**: Never set `dangerouslyDisableSandbox: true` on any Bash tool call. Always run commands inside the sandbox. If a command fails inside the sandbox, diagnose the issue — do not bypass the sandbox.
+> **SANDBOX RULE — MANDATORY, NO EXCEPTIONS**: Never set `dangerouslyDisableSandbox: true` on any Bash tool call. Always run commands inside the sandbox. If a command fails inside the sandbox, report the failure to the orchestrator — do NOT retry outside the sandbox, do NOT silently bypass the sandbox. This is a hard rule with zero tolerance. Violating it is equivalent to failing the task.
 
 ## Workflow
 
@@ -82,20 +86,24 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
 
 ### Phase 1: Pick a Work Item
 
+**Do NOT create a new branch.** sstor has already created a worktree with the correct branch. Work on the current branch as-is.
+
 **If `mode = prompt`** (a free-text description was provided instead of a Jira key):
-1. Set `type = task` and `id = prompt-<timestamp>` (use the instance/branch name).
-2. Create a feature branch: `task/<slug>` where `<slug>` is a short kebab-case summary (max 5 words) derived from the prompt.
-3. Write `.reviews/task-<id>-context.md` with the prompt text as the description. There are no Jira fields — the prompt is the entire context.
-4. Skip to step 6 (clarifying questions).
+1. Set `type = task`. Use the current branch name as the `id`.
+2. Write `.reviews/task-<id>-context.md` with the prompt text as the description. There are no Jira fields — the prompt is the entire context.
+3. Skip to step 5 (clarifying questions).
 
 **If a Jira issue key was provided:**
 1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
 2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue` (cloudId, issueIdOrKey, responseContentFormat: "markdown"). If the fetch fails, **stop immediately and report the error**.
-3. Determine `type` from the issue type: `Bug` → `bug`, `Story`/`Task` → `task`.
-4. Create a feature branch: `<type>/<issueKey>-<slug>` where `<slug>` is a short kebab-case summary (max 5 words) derived from the issue summary.
+3. **Fetch the parent epic** (if one exists). Check the issue's `parent` or `epic` field for an epic key. If present, fetch the epic with a second `getJiraIssue` call.
+4. Determine `type` from the issue type: `Bug` → `bug`, `Story`/`Task` → `task`.
 5. Write `.reviews/<type>-<issueKey>-context.md` containing:
    - For **tasks**: issue key, summary, description, acceptance criteria (from description), labels, comments
    - For **bugs**: issue key, summary, description (contains steps to reproduce, expected/actual), environment, comments
+   - If an **epic** was found, include a `## Epic Context` section with the epic key, summary, and full description. Add a clear note: "This story/bug is one part of a larger epic. The epic's technical notes describe the overall plan — this issue implements only the portion described above. Use the epic context to inform architectural decisions but do not implement beyond this issue's scope."
+
+**For all modes:**
 6. **Ask clarifying questions** before moving on. The goal is to surface anything that would lead to a better, more architecturally sound solution:
    - Read the task/bug alongside the repo's existing patterns (CLAUDE.md, reference docs, nearby code) and identify genuine ambiguities, architectural forks, or missing constraints. Examples: integration points that could live in multiple places, data-model choices, error-handling strategy, backwards-compat concerns, performance expectations, UX edge cases, test boundaries.
    - Use the `AskUserQuestion` tool to ask up to 4 short, high-leverage questions with multiple-choice options where possible. Skip anything obvious from the description, acceptance criteria, or code — only ask what meaningfully changes the plan.
@@ -109,6 +117,7 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
 2. Invoke the **investigator** agent with:
    - **For tasks**: Description, Acceptance Criteria, Notes, Dev Notes
    - **For bugs**: Steps to reproduce, Expected behaviour, Actual behaviour, Environment, Notes, Additional notes. **Clearly state this is a bug fix** — the investigator should focus on reproducing the bug and identifying root cause.
+   - **Epic Context** section from the context file (if present) — this provides the broader technical plan. Remind the agent: "This issue is one part of a larger epic. Use the epic's technical notes to inform architecture but implement only what this issue describes."
    - **Clarifications** section from the context file (if present) — pass verbatim; these answers override any conflicting assumptions.
    - Current repo structure (provide a file tree or summary)
    - Relevant reference doc paths
@@ -128,6 +137,7 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
    - The selected proposal and any additional user instructions from the plan file
    - **For tasks**: Dev Notes, task description and acceptance criteria
    - **For bugs**: Steps to reproduce, expected/actual behaviour, notes. **Clearly state this is a bug fix** — the implementer should fix the root cause identified in the plan, not just the symptoms.
+   - **Epic Context** section from the context file (if present) — remind the agent this issue is part of a larger epic and to use the technical notes for architectural guidance but not implement beyond this issue's scope.
    - **Clarifications** section from the context file (if present) — pass verbatim; these answers override any conflicting assumptions.
    - Relevant reference doc paths
 3. The implementer writes a summary to `.reviews/<type>-<id>-implementation.md` (files changed, root cause if bug, decisions made).
@@ -136,17 +146,17 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
 ### Phase 4: Testing
 
 1. Read `.reviews/<type>-<id>-context.md` and `.reviews/<type>-<id>-implementation.md`.
-2. Invoke the **unit_test_writer** agent with:
+2. Invoke the **qa** agent with:
    - **For tasks**: The task description and acceptance criteria
    - **For bugs**: Steps to reproduce, expected/actual behaviour. **Clearly state this is a bug fix** — the test writer should write a regression test that reproduces the original bug and verifies the fix. If Chrome MCP tools are available, the test writer may also attempt browser-based verification.
    - **Clarifications** section from the context file (if present) — pass verbatim.
    - The implementation summary
    - The test report path (`.reviews/<type>-<id>-tests.md`)
    - Relevant reference doc paths
-3. The unit_test_writer writes its report to `.reviews/<type>-<id>-tests.md` and returns `PASS` or `FAIL`.
+3. The qa writes its report to `.reviews/<type>-<id>-tests.md` and returns `PASS` or `FAIL`.
 4. If `FAIL`:
-   - Pass the unit_test_writer's failure details to the **implementer** agent to fix.
-   - Re-invoke the **unit_test_writer** agent to verify fixes.
+   - Pass the qa's failure details to the **implementer** agent to fix.
+   - Re-invoke the **qa** agent to verify fixes.
    - If still failing after one fix attempt, note the failures and proceed.
 5. Proceed to phase 5.
 
@@ -170,7 +180,7 @@ For each review round (up to 3):
    - Return whether there are actionable `in-scope` items
 3. If there are `in-scope` items:
    - Invoke the **implementer** agent with the review feedback to fix the issues
-   - Invoke the **unit_test_writer** agent to verify fixes haven't broken tests
+   - Invoke the **qa** agent to verify fixes haven't broken tests
    - Continue to the next review round
 4. If there are no `in-scope` items, or this is round 3:
    - The review cycle ends
@@ -178,34 +188,54 @@ For each review round (up to 3):
 
 ### Phase 6: Finalise
 
-1. Stage code changes but **exclude** `.reviews/` files: `git add -A && git reset HEAD .reviews/`. Do **NOT** commit. The user will review and commit manually.
-2. If a Jira issue key was provided (not prompt mode), transition the issue to "Doing" using `mcp__atlassian-rovo__transitionJiraIssue` (use `getTransitionsForJiraIssue` first to find the transition ID).
-3. Do **NOT** push to remote or create a pull request.
+1. **Format**: Run `corepack yarn format:all` to format all changed files with prettier.
+2. **Stage** code changes, excluding `.reviews/`: `git add -A && git reset HEAD .reviews/`. Verify `.reviews/` files are not staged with `git diff --cached --name-only | grep '^\.reviews/'` — if any appear, unstage them.
+3. **Commit** with this format (use a HEREDOC):
+   ```
+   <JIRA-KEY>
+
+   - <high-level change 1>
+   - <high-level change 2>
+   - <high-level change 3>
+   ```
+   First line: Jira issue key (or first few words of prompt for prompt mode). Bullet list: 3-6 concise items from the implementation summary. Commit directly — do not ask for approval.
+4. **Do NOT push** to remote — the user will push manually.
+5. **Transition Jira**: If a Jira issue key was provided (not prompt mode), transition the issue to "Doing" using `mcp__atlassian-rovo__transitionJiraIssue` (use `getTransitionsForJiraIssue` first to find the transition ID).
+6. **Attach review to Jira**: If a Jira issue key was provided and `.reviews/<type>-<id>.md` exists, attach it to the Jira issue using `mcp__atlassian-rovo__addAttachmentToJiraIssue`. If the tool isn't available or the file doesn't exist, skip.
 
 ---
 
 ## Review-Only Workflow (`mode = review`)
 
-When `mode = review`, skip the standard phases and run a review-only workflow. This is for Jira issues that have already been implemented — **do NOT modify any code**.
+When `mode = review`, skip the standard phases and run a review-only workflow. The input can be either a **Jira issue key** (e.g. `N2-789`) or a **git commit SHA**. Do **NOT** modify any code.
 
 ### Step 1: Fetch Context
 
-1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
-2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue`.
-3. Determine `type` from the issue type.
-4. Examine all commits on the current branch vs `master` using `git log master..HEAD --oneline` to understand what was implemented.
-5. Write `.reviews/<type>-<issueKey>-context.md` with the issue details and commit summary.
+Determine whether the input is a Jira key or a commit SHA:
+- **Jira key** (contains letters and a hyphen, e.g. `N2-789`):
+  1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
+  2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue`.
+  3. Determine `type` from the issue type.
+  4. Examine the commits associated with this work. Use `git log master..HEAD --oneline` if on a feature branch, or if the issue key appears in commit messages use `git log --oneline --all --grep="<issueKey>"` to find relevant commits.
+  5. Verify the commits exist locally. If they don't, **stop and report the error** — do not attempt to fetch from remote.
+  6. Write `.reviews/<type>-<issueKey>-context.md` with the issue details and commit summary.
+
+- **Commit SHA** (hex string):
+  1. Verify the commit exists locally with `git cat-file -t <sha>`. If it doesn't exist, **stop and report the error**.
+  2. Set `type = review` and `id = <short-sha>` (first 8 chars).
+  3. Get the commit details with `git show --stat <sha>` and `git log --format="%H %s" <sha>~1..<sha>`.
+  4. Write `.reviews/review-<short-sha>-context.md` with the commit message, author, date, and files changed.
 
 ### Step 2: Code Review
 
 Invoke the **change_reviewer** agent in **standalone review mode** with:
-- The issue details (summary, description, type)
+- The issue details or commit details from the context file
 - `mode = standalone_review` — the reviewer must NOT suggest code modifications, only report findings
-- All commits on the branch (`git log master..HEAD`)
+- The relevant diff: `git diff <sha>~1..<sha>` for a single commit, or `git diff master..HEAD` for a branch
 - **Always** pass any docs with "conventions" in the name from `.sstor/docs/`
 - The server URL from `.sstor/.url` (if available)
 
-The reviewer writes findings to `.reviews/<type>-<issueKey>.md`.
+The reviewer writes findings to `.reviews/<type>-<id>.md`.
 
 ### Step 3: Build & Quality Checks
 

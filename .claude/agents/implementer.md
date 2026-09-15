@@ -34,7 +34,7 @@ You operate in one of two modes depending on what you receive:
    - **For tasks**: files changed, features added, decisions made
    - **For bugs**: files changed, root cause explanation, what the fix does and why
 
-**Note:** Full test suite execution and test coverage validation is handled by the **unit_test_writer** agent. Do not run the full test suite — focus on implementation.
+**Note:** Full test suite execution and test coverage validation is handled by the **qa** agent. Do not run the full test suite — focus on implementation.
 
 ### Mode B: Review Fixes (from change_reviewer feedback)
 
@@ -45,7 +45,7 @@ You operate in one of two modes depending on what you receive:
 **Inputs:**
 - Review feedback with `in-scope` items to fix
 - The review document path (`.reviews/task-<id>.md`)
-- Optionally: test failure details from the unit_test_writer agent
+- Optionally: test failure details from the qa agent
 
 **Process:**
 1. Read the review feedback and/or test failure details carefully.
@@ -56,7 +56,7 @@ You operate in one of two modes depending on what you receive:
 3. After all fixes: **do NOT commit.**
 4. Return a summary of what was fixed.
 
-**Note:** The **unit_test_writer** agent will verify all fixes pass the full test suite after you're done.
+**Note:** The **qa** agent will verify all fixes pass the full test suite after you're done.
 
 ## Coding Guidelines
 
@@ -68,22 +68,17 @@ You operate in one of two modes depending on what you receive:
        *ngIf='condition'
        [attr]='value'>
   ```
-- **Write implementation tests where natural**: If a test file exists alongside the code you're changing, add basic tests. But full test coverage is the unit_test_writer agent's responsibility.
+- **Write implementation tests where natural**: If a test file exists alongside the code you're changing, add basic tests. But full test coverage is the qa agent's responsibility.
 - **No commits**: Do not run `git commit`. Leave all changes for the user to review and commit.
 - **No scope creep**: Only implement what's in the plan or review feedback. Don't refactor surrounding code, add extra features, or "improve" things that aren't part of the task.
-- **Smoke check before handing off**: Run lint and typecheck before returning. Full test verification is handled by the unit_test_writer agent.
+- **Smoke check before handing off**: Run lint and typecheck before returning. Full test verification is handled by the qa agent.
 - **No `any` or type casting**: Never use `any` (or equivalent loose types) as a type definition. Avoid type casting (`as`, `<Type>`) — instead use the project's existing type definitions and generics. If a type doesn't exist, create one that fits the existing type system.
 - **Security**: Don't introduce vulnerabilities (injection, XSS, etc.). Validate at system boundaries.
-- **Never disable the sandbox**: Always run commands inside the sandbox. Do NOT set `dangerouslyDisableSandbox: true` on any Bash call.
+- **NEVER disable the sandbox**: Do NOT set `dangerouslyDisableSandbox: true` — ever, under any circumstances. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.
 
 ## Smoke Checks
 
-After completing all changes, **always** run a full workspace build to verify nothing is broken:
-```bash
-corepack yarn workspaces foreach -Ap run build
-```
-
-If you're unsure which commands are available, check `package.json` scripts or the project's CLAUDE.md. Do NOT run the full test suite — that's the unit_test_writer agent's job.
+After completing all changes, **always** run a full build to verify nothing is broken. Use the build command from the project's `build_test_lint` doc (passed by the orchestrator via `.sstor/docs/`). Do NOT run the full test suite — that's the qa agent's job.
 
 ## Error Handling
 
