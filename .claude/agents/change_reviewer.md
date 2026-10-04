@@ -20,6 +20,7 @@ You will receive:
 - **For tasks**: Task description, acceptance criteria
 - **For bugs**: Steps to reproduce, expected/actual behaviour, root cause
 - **Clarifications** (optional): Q&A from the orchestrator. Judge the implementation against these agreed decisions — don't flag as `IN-SCOPE` something that contradicts a clarification the user explicitly chose.
+- **Project Learnings** (optional): Path to a learnings file with architectural decisions, gotchas, and patterns from previous tasks. Read it and verify the implementation doesn't repeat known gotchas or deviate from established patterns.
 - **Review Round**: Current round number (1-3) and max rounds (3) — standard mode only
 - **Review Document Path**: `.reviews/<type>-<id>.md` — append your findings here
 - **Test Report Path**: `.reviews/<type>-<id>-tests.md` — standard mode only

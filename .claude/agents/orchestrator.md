@@ -22,6 +22,7 @@ You receive:
 - A **mode**: `task`, `bug`, `prompt`, or `review`.
 - Optionally: a **starting phase** (1–6) to resume from. Default is phase 1.
 - Optionally: a **Jira issue key** (e.g. `N2-123`).
+- Optionally: a **cross-review** flag. When enabled, proposals (Phase 2) and code review (Phase 5) are sent to a second LLM (OpenAI) for an independent critique, with a limited exchange between models.
 
 ## Jira Integration
 
@@ -68,6 +69,99 @@ Each phase writes its output to `.reviews/<type>-<id>-<phase>.md` where `<type>`
 | 4 | `.reviews/<type>-<id>-tests.md` | Test report from the qa |
 | 5 | `.reviews/<type>-<id>.md` | Review findings from the change_reviewer |
 
+## Cross-Review Protocol
+
+When `cross-review` is enabled, the orchestrator sends work to a second LLM (OpenAI) at two points for an independent critique. This creates a limited adversarial exchange that catches blind spots.
+
+**Requirements**: `OPENAI_API_KEY` must be set in the environment. If it's not available when cross-review is enabled, warn the user and continue without cross-review.
+
+### How to call the OpenAI API
+
+Use `curl` to call the OpenAI Chat Completions API. Write the request body to a temp file first to avoid shell escaping issues:
+
+```bash
+# Write the request body to a temp file
+cat > "$TMPDIR/cross_review_request.json" << 'JSONEOF'
+{
+  "model": "o3",
+  "messages": [
+    {"role": "system", "content": "<system prompt>"},
+    {"role": "user", "content": "<the content to review>"}
+  ]
+}
+JSONEOF
+
+# Make the API call
+curl -s https://api.openai.com/v1/chat/completions \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @"$TMPDIR/cross_review_request.json"
+```
+
+Parse the response JSON to extract `.choices[0].message.content`. If the call fails, log the error and continue without cross-review — it should never block the workflow.
+
+**IMPORTANT**: The request body JSON must use literal values — do NOT use shell variable substitution (`$VAR`) inside the JSON. Build the JSON content in the temp file using heredoc or the Write tool.
+
+### Cross-Review at Phase 2 (Proposals)
+
+After the investigator writes proposals to `.reviews/<type>-<id>-plan.md`:
+
+1. Read the plan file.
+2. Send to OpenAI with this system prompt:
+
+   > You are a senior software architect reviewing implementation proposals. Your role is devil's advocate — challenge assumptions, identify risks, and point out alternatives the proposer may have missed. Be specific and reference the actual code/architecture being discussed. Do NOT agree for the sake of agreeing. Focus on:
+   > - Architectural risks or scalability concerns
+   > - Simpler alternatives that weren't considered
+   > - Edge cases or failure modes not addressed
+   > - Assumptions that may not hold
+   > - Whether the proposal follows the project's established patterns
+   >
+   > Format your response as numbered points. For each point, state the concern and suggest an alternative or mitigation. Keep it concise — max 10 points.
+
+   Include in the user message: the task description, acceptance criteria, technical notes (if any), and the full proposals text.
+
+3. Parse OpenAI's response. Pass the critique to the **investigator** agent (re-invoke it) with:
+   - The original proposals
+   - The OpenAI critique
+   - Instructions: "A second reviewer has challenged your proposals. For each point: accept and adjust the proposal, or rebut with a specific reason. Do NOT dismiss valid concerns. Update the proposals file with any changes and append a `## Cross-Review` section documenting the exchange."
+
+4. The investigator updates `.reviews/<type>-<id>-plan.md` with adjustments and appends the cross-review exchange.
+
+5. Present the final proposals (with cross-review notes) to the user for selection.
+
+### Cross-Review at Phase 5 (Code Review)
+
+After the change_reviewer writes its review to `.reviews/<type>-<id>.md`:
+
+1. Get the full diff: `git diff master...HEAD`
+2. Read the review document.
+3. Send to OpenAI with this system prompt:
+
+   > You are a senior software engineer performing an independent code review. You are given a diff and another reviewer's findings. Your job is to:
+   > 1. **Find issues the first reviewer missed** — bugs, security issues, performance problems, missing edge cases, convention violations
+   > 2. **Challenge findings you disagree with** — if the first reviewer flagged something that isn't actually a problem, say so and explain why
+   > 3. **Confirm findings you agree with** — briefly note agreement on the most important ones
+   >
+   > Format your response as:
+   > ### New Issues Found
+   > (numbered list — file:line, description, severity)
+   > ### Disagreements with First Review
+   > (numbered list — which finding, why you disagree)
+   > ### Confirmed Issues
+   > (brief list of finding numbers you agree are real)
+   >
+   > Be specific. Reference file names and line numbers. Max 15 points total.
+
+   Include in the user message: the task description, the full diff, and the first reviewer's findings.
+
+4. Parse OpenAI's response. Pass it to the **change_reviewer** agent (re-invoke it) with:
+   - The OpenAI review
+   - Instructions: "A second reviewer has provided an independent review. For each new issue: confirm it's valid and classify as IN-SCOPE or SUGGESTION, or explain why it's not an issue. For each disagreement with your findings: accept the challenge and reclassify, or defend your original finding. Append a `## Cross-Review` section to the review document with the exchange."
+
+5. The change_reviewer updates `.reviews/<type>-<id>.md` with the cross-review exchange.
+
+6. Continue with the normal review cycle — in-scope items (including any newly confirmed ones from cross-review) trigger fix rounds as usual.
+
 ## Sub-agent Rules
 
 When invoking **any** sub-agent, always include this instruction in the prompt:
@@ -101,10 +195,21 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
 5. Write `.reviews/<type>-<issueKey>-context.md` containing:
    - For **tasks**: issue key, summary, description, acceptance criteria (from description), labels, comments
    - For **bugs**: issue key, summary, description (contains steps to reproduce, expected/actual), environment, comments
-   - If an **epic** was found, include a `## Epic Context` section with the epic key, summary, and full description. Add a clear note: "This story/bug is one part of a larger epic. The epic's technical notes describe the overall plan — this issue implements only the portion described above. Use the epic context to inform architectural decisions but do not implement beyond this issue's scope."
+   - If an **epic** was found, parse its description and write two separate sections:
+     - `## Epic Context` — the epic key, summary, and the non-technical-notes portion of the description (Executive Summary, Objectives, High Level Requirements, etc.). Add a clear note: "This story/bug is one part of a larger epic. Use the epic context to inform architectural decisions but do not implement beyond this issue's scope."
+     - `## Technical Notes` — extract the "Technical Notes" section from the epic description (it appears under a **Technical Notes** heading). These are implementation-specific notes from team meetings: architecture decisions, data considerations, rollout plans, and open technical questions. If no Technical Notes section is found in the epic description, omit this section.
+6. **Fetch sibling tasks** (only if an epic was found). Search for other issues in the same epic using the Atlassian MCP search/JQL tools with a query like `parent = <epicKey> AND key != <currentIssueKey> ORDER BY status DESC, created ASC`. For each sibling, note its key, summary, status, and issue type. Add a `## Sibling Tasks` section to the context file:
+   ```
+   ## Sibling Tasks (same epic)
+   - N2-785 [Done]: Added sensor data event listeners
+   - N2-786 [In Progress]: Created analysis service
+   - N2-787 [To Do]: Add export functionality
+   ```
+   This gives sub-agents awareness of related work — what's already been built, what's in progress, and what's coming. If the search tool isn't available or returns an error, skip this step.
 
 **For all modes:**
-6. **Ask clarifying questions** before moving on. The goal is to surface anything that would lead to a better, more architecturally sound solution:
+7. **Check for project learnings**. If `.sstor/docs/learnings.md` exists, read it and note its path. This file accumulates architectural decisions, gotchas, and patterns from previous tasks. It will be passed to sub-agents in later phases.
+8. **Ask clarifying questions** before moving on. The goal is to surface anything that would lead to a better, more architecturally sound solution:
    - Read the task/bug alongside the repo's existing patterns (CLAUDE.md, reference docs, nearby code) and identify genuine ambiguities, architectural forks, or missing constraints. Examples: integration points that could live in multiple places, data-model choices, error-handling strategy, backwards-compat concerns, performance expectations, UX edge cases, test boundaries.
    - Use the `AskUserQuestion` tool to ask up to 4 short, high-leverage questions with multiple-choice options where possible. Skip anything obvious from the description, acceptance criteria, or code — only ask what meaningfully changes the plan.
    - If nothing is genuinely unclear, skip this step entirely. Do not ask filler questions.
@@ -117,18 +222,23 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
 2. Invoke the **investigator** agent with:
    - **For tasks**: Description, Acceptance Criteria, Notes, Dev Notes
    - **For bugs**: Steps to reproduce, Expected behaviour, Actual behaviour, Environment, Notes, Additional notes. **Clearly state this is a bug fix** — the investigator should focus on reproducing the bug and identifying root cause.
-   - **Epic Context** section from the context file (if present) — this provides the broader technical plan. Remind the agent: "This issue is one part of a larger epic. Use the epic's technical notes to inform architecture but implement only what this issue describes."
+   - **Epic Context** section from the context file (if present) — the broader product context. Remind the agent: "This issue is one part of a larger epic. Use the epic context to inform architecture but implement only what this issue describes."
+   - **Technical Notes** section from the context file (if present) — implementation-specific notes from team meetings (architecture decisions, data considerations, rollout plans, open questions). Tell the agent: "These technical notes capture team decisions and constraints. Factor them into your proposals — if the team has already decided on an approach, recommend it rather than proposing alternatives."
+   - **Sibling Tasks** section from the context file (if present) — this shows what related tasks have already been completed, are in progress, or are planned. The investigator should consider what's already been built to avoid duplication and build on existing foundations.
    - **Clarifications** section from the context file (if present) — pass verbatim; these answers override any conflicting assumptions.
+   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the agent: "This file contains architectural decisions, gotchas, and patterns from previous tasks in this project. Read it and factor relevant learnings into your proposals."
    - Current repo structure (provide a file tree or summary)
    - Relevant reference doc paths
    - If Chrome MCP tools are available, mention this — the investigator may plan browser-based reproduction steps.
 3. The investigator writes its proposals to `.reviews/<type>-<id>-plan.md`.
-4. Read the proposals file and present a concise summary to the user:
+4. **Cross-review** (only if `cross-review` is enabled): Follow the "Cross-Review at Phase 2 (Proposals)" protocol from the Cross-Review Protocol section above. The investigator will update the plan file with any adjustments and append a `## Cross-Review` section.
+5. Read the proposals file and present a concise summary to the user:
    - List each proposal with its name, 1-line summary, complexity, and key trade-off.
    - State which proposal the investigator recommended.
    - Ask the user to select a proposal (or provide further instructions).
-5. Once the user selects a proposal, append a `## Selected Proposal` section to `.reviews/<type>-<id>-plan.md` recording the choice and any additional instructions from the user.
-6. Proceed to phase 3.
+   - If cross-review ran, include a brief note of what the second reviewer challenged and how the proposals were adjusted.
+6. Once the user selects a proposal, append a `## Selected Proposal` section to `.reviews/<type>-<id>-plan.md` recording the choice and any additional instructions from the user.
+7. Proceed to phase 3.
 
 ### Phase 3: Implementation
 
@@ -137,8 +247,11 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
    - The selected proposal and any additional user instructions from the plan file
    - **For tasks**: Dev Notes, task description and acceptance criteria
    - **For bugs**: Steps to reproduce, expected/actual behaviour, notes. **Clearly state this is a bug fix** — the implementer should fix the root cause identified in the plan, not just the symptoms.
-   - **Epic Context** section from the context file (if present) — remind the agent this issue is part of a larger epic and to use the technical notes for architectural guidance but not implement beyond this issue's scope.
+   - **Epic Context** section from the context file (if present) — remind the agent this issue is part of a larger epic and to use the context for architectural guidance but not implement beyond this issue's scope.
+   - **Technical Notes** section from the context file (if present) — team decisions on architecture, data handling, and rollout. Tell the agent to follow these constraints.
+   - **Sibling Tasks** section from the context file (if present) — so the implementer knows what related code already exists and can build on it.
    - **Clarifications** section from the context file (if present) — pass verbatim; these answers override any conflicting assumptions.
+   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the agent to read it for relevant gotchas and patterns.
    - Relevant reference doc paths
 3. The implementer writes a summary to `.reviews/<type>-<id>-implementation.md` (files changed, root cause if bug, decisions made).
 4. Proceed to phase 4.
@@ -150,6 +263,7 @@ Each phase overwrites its own output file. When restarting from a phase, that ph
    - **For tasks**: The task description and acceptance criteria
    - **For bugs**: Steps to reproduce, expected/actual behaviour. **Clearly state this is a bug fix** — the test writer should write a regression test that reproduces the original bug and verifies the fix. If Chrome MCP tools are available, the test writer may also attempt browser-based verification.
    - **Clarifications** section from the context file (if present) — pass verbatim.
+   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the agent to check for testing-relevant gotchas.
    - The implementation summary
    - The test report path (`.reviews/<type>-<id>-tests.md`)
    - Relevant reference doc paths
@@ -168,6 +282,7 @@ For each review round (up to 3):
    - **For tasks**: The task description and acceptance criteria
    - **For bugs**: Steps to reproduce, expected/actual behaviour. **Clearly state this is a bug fix** — the reviewer should verify the root cause is addressed, not just the symptom, and that a regression test exists.
    - **Clarifications** section from the context file (if present) — so the reviewer judges the implementation against the decisions that were actually agreed, not default assumptions.
+   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the reviewer to check whether any known gotchas or patterns from previous tasks apply to the current changes.
    - The current round number and max rounds (3)
    - The path to the review document (`.reviews/<type>-<id>.md`)
    - The test report path (`.reviews/<type>-<id>-tests.md`) for reference
@@ -178,7 +293,8 @@ For each review round (up to 3):
    - Classify each comment as `in-scope` (must fix) or `suggestion` (optional)
    - Append findings to `.reviews/<type>-<id>.md`
    - Return whether there are actionable `in-scope` items
-3. If there are `in-scope` items:
+3. **Cross-review** (only if `cross-review` is enabled AND this is round 1): Follow the "Cross-Review at Phase 5 (Code Review)" protocol from the Cross-Review Protocol section above. The change_reviewer will update the review document with cross-review findings. Any new confirmed in-scope items are treated as regular in-scope items for the fix cycle.
+4. If there are `in-scope` items:
    - Invoke the **implementer** agent with the review feedback to fix the issues
    - Invoke the **qa** agent to verify fixes haven't broken tests
    - Continue to the next review round
@@ -202,6 +318,22 @@ For each review round (up to 3):
 4. **Do NOT push** to remote — the user will push manually.
 5. **Transition Jira**: If a Jira issue key was provided (not prompt mode), transition the issue to "Doing" using `mcp__atlassian-rovo__transitionJiraIssue` (use `getTransitionsForJiraIssue` first to find the transition ID).
 6. **Attach review to Jira**: If a Jira issue key was provided and `.reviews/<type>-<id>.md` exists, attach it to the Jira issue using `mcp__atlassian-rovo__addAttachmentToJiraIssue`. If the tool isn't available or the file doesn't exist, skip.
+7. **Extract learnings**. Review the implementation summary (`.reviews/<type>-<id>-implementation.md`), review document (`.reviews/<type>-<id>.md`), and test report (`.reviews/<type>-<id>-tests.md`). Extract learnings worth preserving for future tasks — things a developer working on related code should know:
+   - **Architectural decisions**: Choices made and why (e.g., "Used signal-based state over RxJS for the analysis component because...")
+   - **Gotchas**: Unexpected issues encountered during implementation or review (e.g., "Entry hierarchy sort keys need testing with 3+ nesting levels")
+   - **Patterns established**: New patterns introduced that future tasks should follow (e.g., "Event handlers for sensor data require registration in event-routing.config.ts")
+   - **Review findings that indicate systemic issues**: Recurring review feedback that reveals a pattern to watch for
+
+   Skip trivial or task-specific details. Only record things that would save time or prevent bugs on future tasks.
+
+   Append to `.sstor/docs/learnings.md` using this format (create the file if it doesn't exist — add a `# Project Learnings` heading at the top):
+   ```markdown
+   ## <JIRA-KEY> — <short title> (<date>)
+   - **Decision**: <what was decided and why>
+   - **Gotcha**: <unexpected issue and how it was resolved>
+   - **Pattern**: <new pattern to follow>
+   ```
+   Only include bullet types that apply — most tasks will have 1-3 entries, not all types. If the task produced no noteworthy learnings, skip this step entirely.
 
 ---
 

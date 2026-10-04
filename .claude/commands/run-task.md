@@ -24,6 +24,7 @@ Execute a task, fix a bug, review existing changes, or work from a free-text pro
 - `--review <jira-key|commit-sha>` — Review existing changes. Pass a Jira issue key (e.g. `N2-789`) or a git commit SHA. No code modifications.
 - `--prompt "<description>"` — Free-text description used in place of a Jira issue.
 - `--from <phase>` — Resume from phase 1–6. Default is 1.
+- `--cross-review` — Enable cross-LLM review. Sends proposals (Phase 2) and code review (Phase 5) to OpenAI for a second opinion, with a limited exchange between models. Requires `OPENAI_API_KEY` in env.
 
 ### Examples
 
@@ -34,6 +35,7 @@ Execute a task, fix a bug, review existing changes, or work from a free-text pro
 /run-task --review abc123f                # Review a specific commit
 /run-task --prompt "Add a loading spinner to the dashboard page"
 /run-task --from 3 --task N2-123          # Resume task N2-123 from implementation
+/run-task --task N2-123 --cross-review    # Task with cross-LLM review at proposal and review stages
 ```
 
 ## Instructions
@@ -43,6 +45,7 @@ You are invoking the orchestrator workflow. Follow these steps:
 1. **Parse arguments**
    - Extract `--from` phase number (default: 1).
    - Extract `--task`, `--bug`, `--review`, or `--prompt`.
+   - Extract `--cross-review` flag (default: off).
    - If resuming without an identifier, ask for it.
 
 2. **Follow the Orchestrator workflow**

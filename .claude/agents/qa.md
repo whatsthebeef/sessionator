@@ -14,6 +14,7 @@ You will receive:
 - **For tasks**: Task description, acceptance criteria
 - **For bugs**: Steps to reproduce, expected/actual behaviour, root cause (from implementation summary)
 - **Clarifications** (optional): Q&A from the orchestrator. Use these to shape test scope (e.g. which edge cases matter, which integrations to mock).
+- **Project Learnings** (optional): Path to a learnings file with patterns from previous tasks. Read it for testing-relevant gotchas (e.g., edge cases that were missed before, areas that need specific test coverage).
 - **Implementation Summary**: What the implementer changed
 - **Test Report Path**: `.reviews/<type>-<id>-tests.md`
 

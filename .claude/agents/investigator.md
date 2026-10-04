@@ -23,6 +23,9 @@ You will receive:
   - **Environment**: Where the bug was observed
   - **Notes / Additional Notes**: Extra context from the reporter
 - **Clarifications** (optional): Q&A captured by the orchestrator before planning began. Treat these answers as authoritative — they override conflicting assumptions from the description or codebase defaults.
+- **Technical Notes** (optional): Implementation-specific notes from team meetings — architecture decisions, data considerations, rollout plans, open questions. These represent team consensus. If the notes specify an approach, recommend it rather than proposing alternatives unless you identify a concrete problem with it.
+- **Sibling Tasks** (optional): Other tasks in the same epic — what's already been completed, in progress, or planned. Use this to avoid duplicating work and to build on existing implementations.
+- **Project Learnings** (optional): Path to a learnings file with architectural decisions, gotchas, and patterns from previous tasks. Read it and factor relevant entries into your proposals.
 - **Repo Context**: Current file tree or structure summary
 - **Output path**: File path where the plan must be written
 - **Reference doc paths**: Paths to relevant reference docs to read
@@ -40,7 +43,8 @@ You will receive:
 - Identify the **root cause** — don't just find where the symptom appears, find *why* it happens.
 
 **For both:**
-- Read any reference docs provided.
+- Read any reference docs provided, including the project learnings file if one was given. Check whether any previous decisions, gotchas, or patterns are relevant to this task — they may inform which proposal to recommend or flag risks to call out.
+- If sibling tasks were provided, review what's already been completed in the same epic. Check the codebase for code those tasks introduced — you may be able to reuse services, components, or patterns they established rather than building from scratch.
 - Explore the existing codebase to understand:
   - Relevant existing code, patterns, and conventions
   - Dependencies and imports that will be needed

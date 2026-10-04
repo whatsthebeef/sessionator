@@ -18,6 +18,9 @@ You operate in one of two modes depending on what you receive:
 - **For tasks**: Task description, acceptance criteria, Dev Notes
 - **For bugs**: Steps to reproduce, expected/actual behaviour, notes. The plan will include root cause analysis.
 - **Clarifications** (optional): Q&A from the orchestrator. These are authoritative decisions — follow them even if the plan or code defaults suggest otherwise.
+- **Technical Notes** (optional): Implementation-specific notes from team meetings — architecture decisions, data considerations, rollout constraints. Follow these as team-agreed constraints.
+- **Sibling Tasks** (optional): Other tasks in the same epic — what's already been completed or is in progress. Check the codebase for code those tasks introduced and build on it.
+- **Project Learnings** (optional): Path to a learnings file with architectural decisions, gotchas, and patterns from previous tasks. Read it before implementing — it may contain warnings about tricky areas or established patterns to follow.
 - Output path: file path where the implementation summary must be written
 - Reference doc paths: paths to relevant reference docs to read
 

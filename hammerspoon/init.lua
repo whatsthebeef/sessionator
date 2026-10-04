@@ -102,7 +102,7 @@ hs.hotkey.bind({"alt"}, "T", function() focusApp("com.apple.Terminal") end)
 hs.hotkey.bind({"alt"}, "D", function() focusApp("com.google.Chrome.app.jojdhmlcnakilabhnnmaclkdocikbjed") end)
 hs.hotkey.bind({"alt"}, "W", function() focusApp("net.whatsapp.WhatsApp") end)
 hs.hotkey.bind({"alt"}, "S", function() focusApp("com.tinyspeck.slackmacgap") end)
-hs.hotkey.bind({"alt"}, "G", function() focusApp("com.openai.chat") end)
+hs.hotkey.bind({"alt"}, "G", function() focusApp("com.openai.codex") end)
 hs.hotkey.bind({"alt"}, "A", function() focusApp("dev.yuhapps.g2fa") end)
 
 -- Focus or open a Chrome tab matching a URL pattern

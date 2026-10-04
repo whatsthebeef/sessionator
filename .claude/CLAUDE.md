@@ -9,7 +9,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 3. **Phase 3** — Implement the plan/fix → `.reviews/<type>-<id>-implementation.md`
 4. **Phase 4** — Write and run tests → `.reviews/<type>-<id>-tests.md`
 5. **Phase 5** — Review code changes → `.reviews/<type>-<id>.md`
-6. **Phase 6** — Commit, push, attach review to Jira
+6. **Phase 6** — Commit, attach review to Jira, extract learnings → `.sstor/docs/learnings.md`
 
 ### Running
 
@@ -19,6 +19,14 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 /run-task --from 3 --task N2-123              # Restart task from phase 3
 /run-task --from 3 --bug N2-456              # Restart bug from phase 3
 ```
+
+## Cross-Task Knowledge
+
+The system accumulates knowledge across tasks in two ways:
+
+- **Project learnings** (`.sstor/docs/learnings.md`): After each task completes, the orchestrator extracts architectural decisions, gotchas, and patterns into this file. All sub-agents receive it on future tasks.
+- **Sibling task awareness**: When a task belongs to an epic, the orchestrator fetches other issues in the same epic and passes a digest to sub-agents so they know what's already been built.
+- **Cross-LLM review** (`--cross-review`): Optionally sends proposals and code review to a second LLM (OpenAI) for an independent critique, with a limited exchange between models. Requires `OPENAI_API_KEY` in env and `api.openai.com` in sandbox allowed domains.
 
 ## Task Sheet Structure
 
@@ -58,6 +66,7 @@ This repository uses a multi-agent workflow orchestrated by Claude Code. The orc
 .sstor/                    # Project-specific config (in each target project)
 ├── sstor.conf             # Server command, port base
 └── docs/                  # Reference docs for sub-agents
-    └── index.md           # Doc index with descriptions
+    ├── index.md           # Doc index with descriptions
+    └── learnings.md       # Accumulated decisions, gotchas, patterns from completed tasks
 .reviews/                  # Phase output and review documents
 ```
