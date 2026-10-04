@@ -3,6 +3,12 @@ set -euo pipefail
 
 SSTOR_DIR="$HOME/dev/sessionator"
 
+# sstor init: install the board's agent set from slop into the current checkout.
+if [[ "${1:-}" == "init" ]]; then
+  shift
+  exec python3 "$SSTOR_DIR/scripts/sstor_init.py" "$@"
+fi
+
 SERVER_CMD=""
 KILL=false
 END=false
@@ -78,6 +84,10 @@ Claude agent workflow:
 
 Deploy:
   --deploy                Run the project's .sstor/deploy.sh script from the current branch
+
+Slop:
+  init [board]            Install the board's agent set from slop into this checkout
+                          (board from the argument, SLOP_BOARD, or .sstor/sstor.conf)
 
 Config:
   --sync                  Re-merge Claude config (.claude/) into project/instance
