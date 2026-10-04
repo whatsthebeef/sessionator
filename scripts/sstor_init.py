@@ -23,6 +23,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import slop_mcp  # noqa: E402  # pyright: ignore[reportMissingImports]
+
 MANIFEST = Path('.claude/slop-agent-set.json')
 MARKER = '<!-- implementation-agent-system -->'
 MARKER_END = '<!-- /implementation-agent-system -->'
@@ -56,59 +59,8 @@ def git_root() -> Path:
     return Path(result.stdout.strip())
 
 
-def read_conf(root: Path) -> dict[str, str]:
-    conf: dict[str, str] = {}
-    path = root / '.sstor' / 'sstor.conf'
-    if path.exists():
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                key, value = line.split('=', 1)
-                conf[key.strip()] = value.strip().strip('"').strip("'")
-    return conf
-
-
-def tool_result(stream: str, tool: str) -> str:
-    """The text of the named tool's result in a `claude -p --output-format stream-json` stream."""
-    names: dict[str, str] = {}
-    for line in stream.splitlines():
-        try:
-            message = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if message.get('type') not in ('assistant', 'user'):
-            continue
-        for block in message.get('message', {}).get('content', []):
-            if not isinstance(block, dict):
-                continue
-            if block.get('type') == 'tool_use':
-                names[block['id']] = block['name']
-            elif block.get('type') == 'tool_result' and names.get(str(block.get('tool_use_id', ''))) == tool:
-                content = block.get('content')
-                text = content if isinstance(content, str) else ''.join(
-                    part.get('text', '') for part in content or [] if isinstance(part, dict)
-                )
-                if block.get('is_error'):
-                    raise RuntimeError(text.strip() or f'{tool} failed')
-                return text
-    raise RuntimeError(f'{tool} was not called; is the "{tool.split("__")[1]}" MCP server set up and signed in?')
-
-
-def fetch_bundle(root: Path, server: str, board: str) -> dict:
-    tool = f'mcp__{server}__get_agent_set'
-    prompt = f'Call the tool {tool} exactly (not any other server\'s tool) with board {board} and download true, then reply with just OK.'
-    try:
-        result = subprocess.run(
-            ['claude', '-p', prompt, '--allowedTools', tool, '--output-format', 'stream-json', '--verbose'],
-            cwd=root,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as error:
-        raise RuntimeError(f'could not run claude: {error}') from error
-    link = json.loads(tool_result(result.stdout, tool))
+def fetch_bundle(root: Path, board: str) -> dict:
+    link = slop_mcp.call(root, 'get_agent_set', {'board': int(board), 'download': True})
     with urllib.request.urlopen(link['url'], timeout=60) as response:  # noqa: S310 (slop's signed link)
         bundle = json.loads(response.read())
     if not isinstance(bundle.get('files'), list):
@@ -250,14 +202,14 @@ def apply(root: Path, bundle: dict, board: str, server: str) -> list[str]:
 
 def main() -> None:
     root = git_root()
-    conf = read_conf(root)
+    conf = slop_mcp.read_conf(root)
     board = (sys.argv[1] if len(sys.argv) > 1 else '') or os.environ.get('SLOP_BOARD', '') or conf.get('SLOP_BOARD', '')
     if not board.isdigit():
         fail('no board: pass one (sstor init <board>), set SLOP_BOARD, or add SLOP_BOARD to .sstor/sstor.conf')
-    server = os.environ.get('SLOP_MCP_SERVER') or conf.get('SLOP_MCP_SERVER') or 'slop'
+    server = slop_mcp.server_name(root)
 
     try:
-        bundle = fetch_bundle(root, server, board)
+        bundle = fetch_bundle(root, board)
     except Exception as error:  # noqa: BLE001 (any failure falls back to the committed copy)
         if (root / MANIFEST).exists():
             warn(f'could not fetch the agent set from slop ({error}); keeping the installed copy')

@@ -18,9 +18,16 @@ MERGE=false
 DERGE=false
 SYNC=false
 DEPLOY=false
-TASK=""
-BUG=""
-PROMPT=""
+GLOB=""
+TAKE_OVER=false
+NEW=false
+NEW_TYPE=""
+NEW_CATEGORY=""
+NEW_ROUTINE=false
+NEW_PROMPT=""
+READY=false
+DONE=false
+FINALISED=""
 REVIEW=""
 PROJECT=""
 INSTANCE=""
@@ -40,12 +47,17 @@ while [[ $# -gt 0 ]]; do
     -m|--merge) MERGE=true ;;
     -g|--derge) DERGE=true ;;
     --sync) SYNC=true ;;
-    --task=*) TASK="${1#--task=}" ;;
-    --task) TASK="$2"; shift ;;
-    --bug=*) BUG="${1#--bug=}" ;;
-    --bug) BUG="$2"; shift ;;
-    --prompt=*) PROMPT="${1#--prompt=}" ;;
-    --prompt) PROMPT="$2"; shift ;;
+    --glob=*) GLOB="${1#--glob=}" ;;
+    --glob) GLOB="$2"; shift ;;
+    --take-over) TAKE_OVER=true ;;
+    --new) NEW=true ;;
+    --same|--sub|--super) NEW_TYPE="${1#--}" ;;
+    --feature|--task|--bug) NEW_CATEGORY="${1#--}" ;;
+    --routine) NEW_ROUTINE=true ;;
+    --ready) READY=true ;;
+    --done) DONE=true ;;
+    --finalised=*) FINALISED="${1#--finalised=}" ;;
+    --finalised) FINALISED="$2"; shift ;;
     --review=*) REVIEW="${1#--review=}" ;;
     --review) REVIEW="$2"; shift ;;
     --deploy) DEPLOY=true ;;
@@ -73,14 +85,19 @@ Session management:
   -e, --end               Kill current/target session (allows last session)
   -d, --delete            Delete instance: kill session, remove worktree, delete branch
   -l, --list              List all instances for the project
-  -m, --merge             Merge instance branch into main project branch
-  -g, --derge             Merge, then delete the instance (merge + delete)
 
-Claude agent workflow:
-  --task <key>            Create instance for a Jira issue (Story/Task), launch orchestrator
-  --bug <key>             Create instance for a Jira issue (Bug), launch orchestrator
-  --review <key|sha>      Review a Jira issue or git commit (no code changes)
-  --prompt "<text>"       Create instance with free-text description, launch orchestrator
+Slop globs (board from SLOP_BOARD in .sstor/sstor.conf):
+  --glob <id>             Pick up a glob: worktree on its branch, sstor init, /run-glob
+  --take-over             With --glob: supersede an active routine run
+  --new "<prompt>"        Create a glob through slop's intake (same by default), then pick it up
+     [--same|--sub|--super] [--feature|--task|--bug] [--routine]
+                          Subs and --routine sames are left to a routine (nothing opens locally)
+  --ready                 Finalise (postplan, local review, learnings), push, mark the PR ready
+  -m, --merge             Finalise, then squash-merge the glob's PR on GitHub
+  -g, --derge             --merge, then delete the instance
+  --done                  Delete the instance of a glob merged elsewhere
+  --finalised <id>        With --ready/--merge/--derge: /finalise <id> already ran in Claude
+  --review <id|sha>       Review a glob's changes or a commit (no code changes)
 
 Deploy:
   --deploy                Run the project's .sstor/deploy.sh script from the current branch
@@ -94,12 +111,19 @@ Config:
   -r, --reload            Reload bash profile and tmux config
 
 Project config (.sstor/sstor.conf):
-  JIRA_CLOUD_ID           Atlassian cloud ID
-  JIRA_PROJECT_KEY        Jira project key (e.g. N2)
+  SLOP_BOARD              The project's board in slop
+  SLOP_MCP_SERVER         Name of slop's MCP server in Claude Code (default: slop)
 HELP
       exit 0
       ;;
-    *) echo "Unknown option: $1"; exit 1 ;;
+    -*) echo "Unknown option: $1"; exit 1 ;;
+    *)
+      if $NEW; then
+        NEW_PROMPT="${NEW_PROMPT:+$NEW_PROMPT }$1"
+      else
+        echo "Unexpected argument: $1"; exit 1
+      fi
+      ;;
   esac
   shift
 done
@@ -127,213 +151,11 @@ if [[ ! -d "$REPO_DIR" ]]; then
   exit 1
 fi
 
-# --- Merge Claude Code config into a target directory ---
-merge_claude_config() {
-  local target="$1"
-  local source_claude="$SSTOR_DIR/.claude"
-  local source_claudemd="$source_claude/CLAUDE.md"
-  local target_claude="$target/.claude"
-  local target_claudemd="$target/CLAUDE.md"
-  local target_settings="$target_claude/settings.json"
+SSTOR_PY="$SSTOR_DIR/scripts"
 
-  # 1. Copy agents, commands, memory (overwrite)
-  echo "Copying agents, commands, memory..."
-  rsync -a \
-    --exclude='settings.json' \
-    --exclude='settings.local.json' \
-    --exclude='CLAUDE.md' \
-    "$source_claude/" "$target_claude/"
-
-  # 2. Merge settings.json
-  local source_settings="$source_claude/settings.json"
-  if [[ ! -f "$source_settings" ]]; then
-    echo "No source settings.json, skipping"
-  elif [[ ! -f "$target_settings" ]]; then
-    echo "Merging settings.json..."
-    cp "$source_settings" "$target_settings"
-    echo "  Created new settings.json"
-  else
-    echo "Merging settings.json..."
-    python3 -c "
-import json
-
-with open('$source_settings') as f:
-    src = json.load(f)
-with open('$target_settings') as f:
-    tgt = json.load(f)
-
-# Merge env (source wins on conflict)
-tgt.setdefault('env', {})
-for k, v in src.get('env', {}).items():
-    tgt['env'][k] = v
-    print(f'  Set env: {k}')
-
-# Merge mcpServers (source wins on conflict)
-tgt.setdefault('mcpServers', {})
-for k, v in src.get('mcpServers', {}).items():
-    if k not in tgt['mcpServers']:
-        tgt['mcpServers'][k] = v
-        print(f'  Added MCP server: {k}')
-    else:
-        print(f'  Skipped MCP server (already exists): {k}')
-
-# Merge permissions.allow (dedupe)
-tgt.setdefault('permissions', {})
-tgt_allow = set(tgt['permissions'].get('allow', []))
-src_allow = set(src.get('permissions', {}).get('allow', []))
-new_perms = src_allow - tgt_allow
-if new_perms:
-    tgt['permissions']['allow'] = sorted(tgt_allow | src_allow)
-    print(f'  Added {len(new_perms)} new permission(s)')
-else:
-    print('  No new permissions to add')
-
-for key in ['deny', 'defaultMode']:
-    if key in src.get('permissions', {}) and key not in tgt['permissions']:
-        tgt['permissions'][key] = src['permissions'][key]
-
-if 'sandbox' in src and 'sandbox' not in tgt:
-    tgt['sandbox'] = src['sandbox']
-
-with open('$target_settings', 'w') as f:
-    json.dump(tgt, f, indent=2)
-    f.write('\n')
-
-print('  settings.json merged')
-"
-  fi
-
-
-  # 4. Merge CLAUDE.md
-  local marker="<!-- implementation-agent-system -->"
-  local marker_end="<!-- /implementation-agent-system -->"
-
-  echo "Merging CLAUDE.md..."
-  if [[ ! -f "$target_claudemd" ]]; then
-    cp "$source_claudemd" "$target_claudemd"
-    echo "  Created new CLAUDE.md"
-  elif grep -qF "$marker" "$target_claudemd"; then
-    python3 -c "
-marker = '$marker'
-marker_end = '$marker_end'
-
-with open('$target_claudemd') as f:
-    content = f.read()
-with open('$source_claudemd') as f:
-    insert = f.read()
-
-start = content.find(marker)
-end = content.find(marker_end)
-if start != -1 and end != -1:
-    end += len(marker_end)
-    content = content[:start] + marker + '\n' + insert + '\n' + marker_end + content[end:]
-    print('  Replaced existing implementation agent section')
-else:
-    content = content[:start] + marker + '\n' + insert + '\n' + marker_end + content[start + len(marker):]
-    print('  Rewrapped implementation agent section')
-
-with open('$target_claudemd', 'w') as f:
-    f.write(content)
-"
-  else
-    printf '\n%s\n' "$marker" >> "$target_claudemd"
-    cat "$source_claudemd" >> "$target_claudemd"
-    printf '\n%s\n' "$marker_end" >> "$target_claudemd"
-    echo "  Appended implementation agent section"
-  fi
-
-  # 5. Merge settings.local.json (contains secrets + task-app permissions, never committed)
-  local source_local_settings="$source_claude/settings.local.json"
-  local target_local_settings="$target_claude/settings.local.json"
-  if [[ -f "$source_local_settings" ]]; then
-    echo "Merging settings.local.json..."
-    if [[ ! -f "$target_local_settings" ]]; then
-      cp "$source_local_settings" "$target_local_settings"
-      echo "  Created new settings.local.json"
-    else
-      python3 -c "
-import json
-
-with open('$source_local_settings') as f:
-    src = json.load(f)
-with open('$target_local_settings') as f:
-    tgt = json.load(f)
-
-# Merge env (source wins)
-tgt.setdefault('env', {})
-for k, v in src.get('env', {}).items():
-    tgt['env'][k] = v
-
-# Merge permissions.allow (dedupe)
-tgt.setdefault('permissions', {})
-tgt_allow = set(tgt['permissions'].get('allow', []))
-src_allow = set(src.get('permissions', {}).get('allow', []))
-new_perms = src_allow - tgt_allow
-if new_perms:
-    tgt['permissions']['allow'] = sorted(tgt_allow | src_allow)
-    print(f'  Added {len(new_perms)} new permission(s)')
-
-# Merge sandbox.network.allowedDomains (dedupe)
-src_sandbox = src.get('sandbox', {})
-if src_sandbox:
-    tgt.setdefault('sandbox', {})
-    tgt['sandbox'].setdefault('network', {})
-    src_network = src_sandbox.get('network', {})
-    tgt_domains = set(tgt['sandbox']['network'].get('allowedDomains', []))
-    src_domains = set(src_network.get('allowedDomains', []))
-    new_domains = src_domains - tgt_domains
-    if new_domains:
-        tgt['sandbox']['network']['allowedDomains'] = sorted(tgt_domains | src_domains)
-        print(f'  Added {len(new_domains)} new sandbox domain(s)')
-    # Merge other sandbox fields that aren't set
-    for k, v in src_sandbox.items():
-        if k != 'network' and k not in tgt['sandbox']:
-            tgt['sandbox'][k] = v
-
-with open('$target_local_settings', 'w') as f:
-    json.dump(tgt, f, indent=2)
-    f.write('\n')
-
-print('  settings.local.json merged')
-"
-    fi
-  fi
-
-  # 6. Ensure target .gitignore covers .claude internals and .sstor ephemeral files
-  local target_gitignore="$target/.gitignore"
-  echo "Checking .gitignore..."
-  if [[ ! -f "$target_gitignore" ]]; then
-    cat > "$target_gitignore" <<'GI'
-### claude ###
-.claude/*
-!.claude/commands/
-
-### sstor ###
-.sstor/.url
-GI
-    echo "  Created .gitignore with claude/sstor entries"
-  else
-    local changed=false
-    if ! grep -qF '.claude/*' "$target_gitignore"; then
-      printf '\n### claude ###\n.claude/*\n' >> "$target_gitignore"
-      changed=true
-    fi
-    if ! grep -qF '!.claude/commands/' "$target_gitignore"; then
-      printf '!.claude/commands/\n' >> "$target_gitignore"
-      changed=true
-    fi
-    if ! grep -qF '.sstor/.url' "$target_gitignore"; then
-      printf '\n### sstor ###\n.sstor/.url\n' >> "$target_gitignore"
-      changed=true
-    fi
-    if $changed; then
-      echo "  Updated .gitignore"
-    else
-      echo "  .gitignore already up to date"
-    fi
-  fi
-
-  echo "Done merging Claude config into $target"
+# Installs the board's agent set from slop into a checkout (sstor init).
+slop_init() {
+  (cd "$1" && python3 "$SSTOR_PY/sstor_init.py")
 }
 
 # Sync Claude config into an existing project/instance
@@ -347,14 +169,8 @@ if $SYNC; then
     echo "Directory not found: $SYNC_TARGET"
     exit 1
   fi
-  merge_claude_config "$SYNC_TARGET"
-  set +u
-  source ~/.bash_profile
-  set -u
-  tmux source-file ~/.tmux.conf 2>/dev/null || true
-  hs -c "hs.reload()" 2>/dev/null || true
-  echo "Configs reloaded"
-  exit 0
+  slop_init "$SYNC_TARGET"
+  exit $?
 fi
 
 # Trigger project deploy script
@@ -381,17 +197,44 @@ if $DEPLOY; then
   exec "$DEPLOY_SCRIPT"
 fi
 
-# --task / --bug / --prompt / --review imply an instance name
-if [[ -n "$TASK" ]]; then
-  INSTANCE="$TASK"
-elif [[ -n "$BUG" ]]; then
-  INSTANCE="$BUG"
+# --new creates a glob through slop's intake; subs and --routine sames stay with a routine.
+if $NEW; then
+  [[ -n "$NEW_PROMPT" ]] || { echo "Usage: sstor --new [--same|--sub|--super] [--feature|--task|--bug] [--routine] \"<prompt>\""; exit 1; }
+  NEW_ARGS=()
+  [[ -n "$NEW_TYPE" ]] && NEW_ARGS+=(--type "$NEW_TYPE")
+  [[ -n "$NEW_CATEGORY" ]] && NEW_ARGS+=(--category "$NEW_CATEGORY")
+  $NEW_ROUTINE && NEW_ARGS+=(--routine)
+  CREATED=$(cd "$REPO_DIR" && python3 "$SSTOR_PY/sstor_glob.py" new ${NEW_ARGS[@]+"${NEW_ARGS[@]}"} "$NEW_PROMPT") || exit 1
+  eval "$CREATED"
+  if [[ "$TYPE" == "sub" ]] || $NEW_ROUTINE; then
+    echo "$ID is with a routine ($STATUS). Watch it on the board, or take it over with: sstor --glob $ID --take-over"
+    exit 0
+  fi
+  GLOB="$ID"
+fi
+
+# --glob checks and picks up the glob before anything is created locally.
+if [[ -n "$GLOB" ]]; then
+  PREPARE_ARGS=()
+  $TAKE_OVER && PREPARE_ARGS+=(--take-over)
+  PREPARED=$(cd "$REPO_DIR" && python3 "$SSTOR_PY/sstor_glob.py" prepare "$GLOB" ${PREPARE_ARGS[@]+"${PREPARE_ARGS[@]}"}) || exit 1
+  eval "$PREPARED"
+  GLOB="$ID"
+  INSTANCE="$ID"
 elif [[ -n "$REVIEW" ]]; then
   INSTANCE="review-${REVIEW}"
-elif [[ -n "$PROMPT" ]]; then
-  # Build slug from first 5 words of prompt
-  SLUG=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//;s/-$//' | cut -d'-' -f1-5)
-  INSTANCE="prompt-${SLUG}"
+fi
+
+# --ready: finalise, push and mark the glob's PR ready for review.
+if $READY; then
+  if [[ -z "$INSTANCE" ]] && [[ "$(pwd)" == *__worktrees/* ]]; then
+    INSTANCE="$(basename "$(git rev-parse --show-toplevel)")"; INSTANCE="${INSTANCE#"${PROJECT}"-}"
+  fi
+  [[ -n "$INSTANCE" ]] || { echo "Usage: sstor -i <glob> --ready"; exit 1; }
+  READY_ARGS=()
+  [[ -n "$FINALISED" ]] && READY_ARGS+=(--finalised "$FINALISED")
+  python3 "$SSTOR_PY/sstor_glob.py" ready "$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${INSTANCE}" "${PROJECT}-${INSTANCE}" ${READY_ARGS[@]+"${READY_ARGS[@]}"}
+  exit $?
 fi
 
 # Kill server process on the port from .sstor/.url and clean up
@@ -497,48 +340,31 @@ if $LIST; then
   exit 0
 fi
 
-# Merge instance branch into main project branch and switch to main session
-if $MERGE || $DERGE; then
+# Squash-merge the glob's PR on GitHub (--merge/--derge), then clean up (--derge/--done).
+if $MERGE || $DERGE || $DONE; then
+  if [[ -z "$INSTANCE" ]] && [[ "$(pwd)" == *__worktrees/* ]]; then
+    INSTANCE="$(basename "$(git rev-parse --show-toplevel)")"; INSTANCE="${INSTANCE#"${PROJECT}"-}"
+  fi
   if [[ -z "$INSTANCE" ]]; then
-    echo "Usage: sstor <instance> --merge|--derge"
+    echo "Usage: sstor -i <glob> --merge|--derge|--done"
     exit 1
   fi
 
   SESSION="${PROJECT}-${INSTANCE}"
   WORKTREE_DIR="$HOME/dev/${PROJECT}__worktrees/$SESSION"
-  DEFAULT_BRANCH="$SESSION"
 
-  # Detect the active branch inside the worktree (may be task/<id>-<slug>)
-  if [[ -d "$WORKTREE_DIR" ]]; then
-    BRANCH=$(git -C "$WORKTREE_DIR" branch --show-current)
-  else
-    BRANCH="$DEFAULT_BRANCH"
+  if $MERGE || $DERGE; then
+    MERGE_ARGS=()
+    [[ -n "$FINALISED" ]] && MERGE_ARGS+=(--finalised "$FINALISED")
+    python3 "$SSTOR_PY/sstor_glob.py" merge "$WORKTREE_DIR" "$SESSION" ${MERGE_ARGS[@]+"${MERGE_ARGS[@]}"} || exit 1
   fi
 
-  if [[ -z "$BRANCH" ]]; then
-    echo "Could not determine branch to merge from $WORKTREE_DIR"
-    exit 1
-  fi
-
-  # Merge into master in the main repo
-  CURRENT_BRANCH=$(git -C "$REPO_DIR" branch --show-current)
-  if [[ "$CURRENT_BRANCH" != "master" ]]; then
-    git -C "$REPO_DIR" checkout master
-  fi
-  echo "Merging $BRANCH into master..."
-  git -C "$REPO_DIR" merge --no-ff "$BRANCH"
-  echo "Merged $BRANCH into master"
-  if [[ "$CURRENT_BRANCH" != "master" ]]; then
-    git -C "$REPO_DIR" checkout "$CURRENT_BRANCH"
-  fi
-
-  if $DERGE; then
-    # Kill tmux session if it exists
+  if $DERGE || $DONE; then
     if tmux has-session -t "$SESSION" 2>/dev/null; then
       if [[ -n "${TMUX:-}" ]] && [[ "$(tmux display-message -p '#S')" == "$SESSION" ]]; then
-        # Switch to main project session (create if needed) before killing
         if ! tmux has-session -t "$PROJECT" 2>/dev/null; then
-          sstor --project="$PROJECT"
+          sstor --project="$PROJECT" </dev/null >/dev/null 2>&1 &
+          sleep 1
         fi
         tmux switch-client -t "$PROJECT"
       fi
@@ -546,30 +372,16 @@ if $MERGE || $DERGE; then
       tmux kill-session -t "$SESSION"
       echo "Killed session: $SESSION"
     fi
-
-    # Remove worktree
     if [[ -d "$WORKTREE_DIR" ]]; then
       git -C "$REPO_DIR" worktree remove --force "$WORKTREE_DIR"
       echo "Removed worktree: $WORKTREE_DIR"
     fi
-
-    # Delete both the task branch (if different) and the worktree default branch
-    for b in "$BRANCH" "$DEFAULT_BRANCH"; do
-      if [[ -n "$b" ]] && git -C "$REPO_DIR" rev-parse --verify "$b" &>/dev/null; then
-        git -C "$REPO_DIR" branch -D "$b"
-        echo "Deleted branch: $b"
-      fi
-    done
-  fi
-
-  # Switch to main project session
-  if [[ -n "${TMUX:-}" ]]; then
-    if ! tmux has-session -t "$PROJECT" 2>/dev/null; then
-      sstor --project="$PROJECT"
+    if git -C "$REPO_DIR" rev-parse --verify "$INSTANCE" &>/dev/null; then
+      git -C "$REPO_DIR" branch -D "$INSTANCE"
+      echo "Deleted branch: $INSTANCE"
     fi
-    tmux switch-client -t "$PROJECT"
+    git -C "$REPO_DIR" fetch --prune --quiet origin || true
   fi
-
   exit 0
 fi
 
@@ -596,11 +408,13 @@ if $DELETE; then
     echo "Removed worktree: $WORKTREE_DIR"
   fi
 
-  # Delete branch
-  if git -C "$REPO_DIR" rev-parse --verify "$SESSION" &>/dev/null; then
-    git -C "$REPO_DIR" branch -D "$SESSION"
-    echo "Deleted branch: $SESSION"
-  fi
+  # Delete the local branch (glob instances use the glob ID; others the session name)
+  for b in "$INSTANCE" "$SESSION"; do
+    if git -C "$REPO_DIR" rev-parse --verify "$b" &>/dev/null; then
+      git -C "$REPO_DIR" branch -D "$b"
+      echo "Deleted branch: $b"
+    fi
+  done
 
   # Kill tmux session if it exists
   if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -629,7 +443,13 @@ if [[ -n "$INSTANCE" ]]; then
 
   if [[ ! -d "$WORKTREE_DIR" ]]; then
     mkdir -p "$HOME/dev/${PROJECT}__worktrees"
-    git -C "$REPO_DIR" worktree add "$WORKTREE_DIR" -b "$SESSION"
+    if [[ -n "$GLOB" ]]; then
+      # The glob's branch is its ID, created by slop on origin.
+      git -C "$REPO_DIR" fetch --quiet origin "$GLOB"
+      git -C "$REPO_DIR" worktree add --track -B "$GLOB" "$WORKTREE_DIR" "origin/$GLOB"
+    else
+      git -C "$REPO_DIR" worktree add "$WORKTREE_DIR" -b "$SESSION"
+    fi
     # Copy certs directory if it exists in the main repo
     if [[ -d "$REPO_DIR/certs" ]]; then
       cp -r "$REPO_DIR/certs" "$WORKTREE_DIR/certs"
@@ -647,8 +467,12 @@ else
   fi
 fi
 
-if $NEW_SETUP; then
-  merge_claude_config "$START_DIR"
+if $NEW_SETUP || [[ -n "$GLOB" ]]; then
+  # Before Claude starts, so new agents and commands register.
+  if ! slop_init "$START_DIR"; then
+    [[ -n "$GLOB" ]] && exit 1
+    echo "Continuing without a fresh agent set"
+  fi
 fi
 
 # Read project config from .sstor/sstor.conf (if no --server was passed)
@@ -714,14 +538,10 @@ WINDOW=1
 
 # Window 1: claude
 tmux new-session -d -s "$SESSION" -c "$START_DIR" -n claude
-if [[ -n "$TASK" ]]; then
-  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --task $TASK'" C-m
-elif [[ -n "$BUG" ]]; then
-  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --bug $BUG'" C-m
+if [[ -n "$GLOB" ]]; then
+  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-glob $GLOB'" C-m
 elif [[ -n "$REVIEW" ]]; then
-  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --review $REVIEW'" C-m
-elif [[ -n "$PROMPT" ]]; then
-  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-task --prompt \"$PROMPT\"'" C-m
+  tmux send-keys -t "$SESSION":$WINDOW "claude '/run-glob --review $REVIEW'" C-m
 else
   tmux send-keys -t "$SESSION":$WINDOW 'claude --continue' C-m
 fi
