@@ -1,0 +1,26 @@
+# Slop sub gate: the repo's own checks for subs, reported as the `sub-gate` check run.
+# Slop applies the board's policy (size, sensitive paths) when this passes on the PR's head,
+# then merges the sub or converts it to a same.
+name: sub-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  sub-gate:
+    if: ${{ !github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'slop:sub') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Shell syntax
+        run: bash -n scripts/sstor install.sh
+      - name: Python syntax
+        run: python3 -c "import ast,sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]" scripts/*.py
