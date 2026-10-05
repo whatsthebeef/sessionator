@@ -2,11 +2,78 @@
 set -euo pipefail
 
 SSTOR_DIR="$HOME/dev/sessionator"
+SSTOR_PY="$SSTOR_DIR/scripts"
 
-# sstor init: install the board's agent set from slop into the current checkout.
+# Everything that talks to slop goes through the slop CLI (the slop repo's apps/cli).
+SLOP_CLI="${SLOP_CLI:-slop}"
+MERGE_WAIT_S=1800
+
+slop_cli() {
+  case "$SLOP_CLI" in
+    *.mjs|*.js) node "$SLOP_CLI" "$@" ;;
+    *) "$SLOP_CLI" "$@" ;;
+  esac
+}
+
+# True when the slop CLI can run; otherwise says how to get it.
+slop_runnable() {
+  local ok=true
+  case "$SLOP_CLI" in
+    *.mjs|*.js) [[ -f "$SLOP_CLI" ]] && command -v node >/dev/null || ok=false ;;
+    */*) [[ -x "$SLOP_CLI" ]] || ok=false ;;
+    *) command -v "$SLOP_CLI" >/dev/null || ok=false ;;
+  esac
+  if ! $ok; then
+    echo "sstor: the slop CLI ($SLOP_CLI) is not runnable. Build it in the slop repo (apps/cli: npm run build)" >&2
+    echo "       and put it on PATH as slop, or set SLOP_CLI=/path/to/slop/apps/cli/dist/slop.mjs" >&2
+    return 1
+  fi
+}
+
+require_slop() {
+  slop_runnable || exit 1
+}
+
+# One field of the JSON object slop printed on stdin (empty when missing).
+json_field() {
+  python3 -c 'import json, sys
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    data = None
+if not isinstance(data, dict):
+    sys.exit("sstor: slop returned unexpected output (expected a JSON object)")
+value = data.get(sys.argv[1])
+print("" if value is None else str(value).lower() if isinstance(value, bool) else value)' "$1"
+}
+
+# Installs the board's agent set (slop init [board]) into a checkout, then merges the developer's
+# personal .claude/settings.local.json from sessionator (never from slop).
+checkout_init() {
+  local dir="$1"; shift
+  local status=0
+  if slop_runnable; then
+    (cd "$dir" && slop_cli init "$@") || status=$?
+  else
+    status=1
+  fi
+  python3 "$SSTOR_PY/sstor_init.py" "$SSTOR_DIR/.claude/settings.local.json" "$dir" || status=1
+  return $status
+}
+
+# sstor init [board]: slop init, then the personal settings merge, in the current checkout.
 if [[ "${1:-}" == "init" ]]; then
   shift
-  exec python3 "$SSTOR_DIR/scripts/sstor_init.py" "$@"
+  ROOT="$(git rev-parse --show-toplevel)" || exit 1
+  checkout_init "$ROOT" "$@"
+  exit $?
+fi
+
+# sstor login / logout: the slop CLI's own sign-in.
+if [[ "${1:-}" == "login" || "${1:-}" == "logout" ]]; then
+  require_slop
+  slop_cli "$1"
+  exit $?
 fi
 
 SERVER_CMD=""
@@ -86,15 +153,17 @@ Session management:
   -d, --delete            Delete instance: kill session, remove worktree, delete branch
   -l, --list              List all instances for the project
 
-Slop globs (board from SLOP_BOARD in .sstor/sstor.conf):
-  --glob <id>             Pick up a glob: worktree on its branch, sstor init, /run-glob
-  --take-over             With --glob: supersede an active routine run
-  --new "<prompt>"        Create a glob through slop's intake (same by default), then pick it up
+Slop globs (through the slop CLI; board from SLOP_BOARD in .sstor/sstor.conf):
+  --glob <id>             Pick up a glob (slop pick-up), make its worktree on its branch,
+                          slop init + personal settings, launch /run-glob
+  --take-over             With --glob: supersede a queued or active routine run
+  --new "<prompt>"        Create a glob through slop's intake (slop new; same by default),
      [--same|--sub|--super] [--feature|--task|--bug] [--routine]
-                          Subs and --routine sames are left to a routine (nothing opens locally)
-  --ready                 Finalise (postplan, local review, learnings), push, mark the PR ready
-  -m, --merge             Finalise, then squash-merge the glob's PR on GitHub
-  -g, --derge             --merge, then delete the instance
+                          then pick it up. Subs and --routine sames are left to a routine
+                          (nothing opens locally)
+  --ready                 /finalise in Claude, then slop ready (push, mark the PR ready)
+  -m, --merge             /finalise in Claude, then slop merge (like the glob's Merge button)
+  -g, --derge             --merge, wait for slop to finish merging, then delete the instance
   --done                  Delete the instance of a glob merged elsewhere
   --finalised <id>        With --ready/--merge/--derge: /finalise <id> already ran in Claude
   --review <id|sha>       Review a glob's changes or a commit (no code changes)
@@ -103,16 +172,22 @@ Deploy:
   --deploy                Run the project's .sstor/deploy.sh script from the current branch
 
 Slop:
-  init [board]            Install the board's agent set from slop into this checkout
-                          (board from the argument, SLOP_BOARD, or .sstor/sstor.conf)
+  init [board]            slop init [board] in this checkout (the board's agent set), then merge
+                          your personal ~/dev/sessionator/.claude/settings.local.json into it
+  login                   slop login (sign in to slop in the browser)
+  logout                  slop logout
 
 Config:
-  --sync                  Re-merge Claude config (.claude/) into project/instance
+  --sync                  Re-run init (slop init + personal settings) in project/instance
   -r, --reload            Reload bash profile and tmux config
 
 Project config (.sstor/sstor.conf):
-  SLOP_BOARD              The project's board in slop
-  SLOP_MCP_SERVER         Name of slop's MCP server in Claude Code (default: slop)
+  SLOP_BOARD              The project's board in slop (read by the slop CLI)
+
+Environment:
+  SLOP_CLI                The slop CLI to run (default: slop on PATH), e.g.
+                          SLOP_CLI=~/dev/slop/apps/cli/dist/slop.mjs
+                          Its own settings (SLOP_URL, SLOP_CLIENT_ID, ...): slop --help
 HELP
       exit 0
       ;;
@@ -151,13 +226,6 @@ if [[ ! -d "$REPO_DIR" ]]; then
   exit 1
 fi
 
-SSTOR_PY="$SSTOR_DIR/scripts"
-
-# Installs the board's agent set from slop into a checkout (sstor init).
-slop_init() {
-  (cd "$1" && python3 "$SSTOR_PY/sstor_init.py")
-}
-
 # Sync Claude config into an existing project/instance
 if $SYNC; then
   if [[ -n "$INSTANCE" ]]; then
@@ -169,7 +237,7 @@ if $SYNC; then
     echo "Directory not found: $SYNC_TARGET"
     exit 1
   fi
-  slop_init "$SYNC_TARGET"
+  checkout_init "$SYNC_TARGET"
   exit $?
 fi
 
@@ -200,41 +268,99 @@ fi
 # --new creates a glob through slop's intake; subs and --routine sames stay with a routine.
 if $NEW; then
   [[ -n "$NEW_PROMPT" ]] || { echo "Usage: sstor --new [--same|--sub|--super] [--feature|--task|--bug] [--routine] \"<prompt>\""; exit 1; }
+  require_slop
   NEW_ARGS=()
-  [[ -n "$NEW_TYPE" ]] && NEW_ARGS+=(--type "$NEW_TYPE")
-  [[ -n "$NEW_CATEGORY" ]] && NEW_ARGS+=(--category "$NEW_CATEGORY")
+  [[ -n "$NEW_TYPE" ]] && NEW_ARGS+=("--$NEW_TYPE")
+  [[ -n "$NEW_CATEGORY" ]] && NEW_ARGS+=("--$NEW_CATEGORY")
   $NEW_ROUTINE && NEW_ARGS+=(--routine)
-  CREATED=$(cd "$REPO_DIR" && python3 "$SSTOR_PY/sstor_glob.py" new ${NEW_ARGS[@]+"${NEW_ARGS[@]}"} "$NEW_PROMPT") || exit 1
-  eval "$CREATED"
-  if [[ "$TYPE" == "sub" ]] || $NEW_ROUTINE; then
+  CREATED=$(cd "$REPO_DIR" && slop_cli new ${NEW_ARGS[@]+"${NEW_ARGS[@]}"} --json "$NEW_PROMPT") || exit 1
+  ID=$(json_field id <<<"$CREATED")
+  TYPE=$(json_field type <<<"$CREATED")
+  STATUS=$(json_field status <<<"$CREATED")
+  echo "sstor: created $ID ($TYPE, $(json_field category <<<"$CREATED")): $STATUS" >&2
+  if [[ "$(json_field routine <<<"$CREATED")" == "true" ]] || [[ "$TYPE" == "sub" ]] || $NEW_ROUTINE; then
     echo "$ID is with a routine ($STATUS). Watch it on the board, or take it over with: sstor --glob $ID --take-over"
     exit 0
   fi
   GLOB="$ID"
 fi
 
-# --glob checks and picks up the glob before anything is created locally.
+# --glob picks up the glob (slop waits for its branch) before anything is created locally.
 if [[ -n "$GLOB" ]]; then
-  PREPARE_ARGS=()
-  $TAKE_OVER && PREPARE_ARGS+=(--take-over)
-  PREPARED=$(cd "$REPO_DIR" && python3 "$SSTOR_PY/sstor_glob.py" prepare "$GLOB" ${PREPARE_ARGS[@]+"${PREPARE_ARGS[@]}"}) || exit 1
-  eval "$PREPARED"
-  GLOB="$ID"
-  INSTANCE="$ID"
+  require_slop
+  PICK_UP_ARGS=("$GLOB")
+  $TAKE_OVER && PICK_UP_ARGS+=(--take-over)
+  BRANCH=$(cd "$REPO_DIR" && slop_cli pick-up "${PICK_UP_ARGS[@]}") || exit 1
+  # The glob's branch is its ID; anything else must not reach git or the worktree path.
+  if [[ "$BRANCH" != "$GLOB" ]]; then
+    echo "sstor: slop gave the branch '$BRANCH' for $GLOB; expected the glob ID" >&2
+    exit 1
+  fi
+  INSTANCE="$GLOB"
 elif [[ -n "$REVIEW" ]]; then
+  # The value is typed into the Claude window, so only a glob ID or a commit SHA gets through.
+  GLOB_ID_RE='^s[1-9][0-9]*[ftbh][1-9][0-9]*$'
+  SHA_RE='^[0-9a-fA-F]{7,40}$'
+  if ! [[ "$REVIEW" =~ $GLOB_ID_RE || "$REVIEW" =~ $SHA_RE ]]; then
+    echo "sstor: --review takes a glob ID (like s1t4) or a commit SHA, not '$REVIEW'" >&2
+    exit 1
+  fi
   INSTANCE="review-${REVIEW}"
 fi
 
-# --ready: finalise, push and mark the glob's PR ready for review.
+# Runs /finalise in the instance's Claude window (unless --finalised), checks its marker and
+# prints the request ID.
+finalise() {
+  local worktree="$1" session="$2"
+  local args=()
+  [[ -n "$FINALISED" ]] && args+=(--finalised "$FINALISED")
+  [[ -d "$worktree" ]] || { echo "sstor: no worktree at $worktree" >&2; return 1; }
+  python3 "$SSTOR_PY/sstor_glob.py" finalise "$worktree" "$session" ${args[@]+"${args[@]}"}
+}
+
+# Checks sign-in and reachability before the (slow) /finalise handshake.
+slop_signed_in() {
+  slop_cli whoami >/dev/null || {
+    echo "sstor: slop is unreachable or you are not signed in (sstor login); nothing was finalised" >&2
+    return 1
+  }
+}
+
+# After a successful /finalise, a failed slop step shouldn't make the user finalise again.
+finalised_hint() {
+  echo "sstor: /finalise already ran; once fixed, re-run: sstor -i $INSTANCE $1 --finalised $2" >&2
+}
+
+# Refuses when the worktree holds work that isn't on origin/<id> (it would be lost on cleanup).
+require_pushed() {
+  local dir="$1" id="$2" ahead
+  if [[ -n "$(git -C "$dir" status --porcelain --untracked-files=no)" ]]; then
+    echo "sstor: $id has uncommitted changes in $dir; commit them and run sstor -i $id --ready (or push) first. Nothing was merged or deleted" >&2
+    return 1
+  fi
+  git -C "$dir" fetch --quiet origin "$id" || { echo "sstor: could not fetch origin/$id" >&2; return 1; }
+  ahead=$(git -C "$dir" rev-list --count "origin/$id..HEAD") || return 1
+  if [[ "$ahead" != "0" ]]; then
+    echo "sstor: $id has $ahead commit(s) not on origin; run sstor -i $id --ready (or push) first. Nothing was merged or deleted" >&2
+    return 1
+  fi
+}
+
+# --ready: finalise, then slop ready (push, mark the glob's PR ready for review).
 if $READY; then
   if [[ -z "$INSTANCE" ]] && [[ "$(pwd)" == *__worktrees/* ]]; then
     INSTANCE="$(basename "$(git rev-parse --show-toplevel)")"; INSTANCE="${INSTANCE#"${PROJECT}"-}"
   fi
   [[ -n "$INSTANCE" ]] || { echo "Usage: sstor -i <glob> --ready"; exit 1; }
-  READY_ARGS=()
-  [[ -n "$FINALISED" ]] && READY_ARGS+=(--finalised "$FINALISED")
-  python3 "$SSTOR_PY/sstor_glob.py" ready "$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${INSTANCE}" "${PROJECT}-${INSTANCE}" ${READY_ARGS[@]+"${READY_ARGS[@]}"}
-  exit $?
+  require_slop
+  slop_signed_in || exit 1
+  READY_DIR="$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${INSTANCE}"
+  REQUEST=$(finalise "$READY_DIR" "${PROJECT}-${INSTANCE}") || exit 1
+  if ! (cd "$READY_DIR" && slop_cli ready "$INSTANCE"); then
+    finalised_hint --ready "$REQUEST"
+    exit 1
+  fi
+  exit 0
 fi
 
 # Kill server process on the port from .sstor/.url and clean up
@@ -340,7 +466,7 @@ if $LIST; then
   exit 0
 fi
 
-# Squash-merge the glob's PR on GitHub (--merge/--derge), then clean up (--derge/--done).
+# Merge the glob through slop (--merge/--derge), then clean up (--derge/--done).
 if $MERGE || $DERGE || $DONE; then
   if [[ -z "$INSTANCE" ]] && [[ "$(pwd)" == *__worktrees/* ]]; then
     INSTANCE="$(basename "$(git rev-parse --show-toplevel)")"; INSTANCE="${INSTANCE#"${PROJECT}"-}"
@@ -354,9 +480,75 @@ if $MERGE || $DERGE || $DONE; then
   WORKTREE_DIR="$HOME/dev/${PROJECT}__worktrees/$SESSION"
 
   if $MERGE || $DERGE; then
-    MERGE_ARGS=()
-    [[ -n "$FINALISED" ]] && MERGE_ARGS+=(--finalised "$FINALISED")
-    python3 "$SSTOR_PY/sstor_glob.py" merge "$WORKTREE_DIR" "$SESSION" ${MERGE_ARGS[@]+"${MERGE_ARGS[@]}"} || exit 1
+    require_slop
+    [[ -d "$WORKTREE_DIR" ]] || { echo "sstor: no worktree at $WORKTREE_DIR" >&2; exit 1; }
+    $DERGE && MERGE_FLAG=--derge || MERGE_FLAG=--merge
+    slop_signed_in || exit 1
+    CURRENT=$(cd "$WORKTREE_DIR" && slop_cli glob "$INSTANCE" --json) || exit 1
+    MERGE_STATUS=$(json_field status <<<"$CURRENT")
+    case "$MERGE_STATUS" in
+      merging|reviewing|signed_off)
+        # A re-run after the merge started: no second /finalise, and slop would refuse a merge.
+        echo "sstor: $INSTANCE is already $MERGE_STATUS; skipping /finalise and merge" >&2
+        # Cleanup force-removes the worktree, so uncommitted tracked work would be lost. (Unpushed
+        # commits can't be checked here: the merged branch may already be gone from origin.)
+        if $DERGE && [[ -n "$(git -C "$WORKTREE_DIR" status --porcelain --untracked-files=no)" ]]; then
+          echo "sstor: $INSTANCE has uncommitted changes in $WORKTREE_DIR; save them elsewhere first. Nothing was deleted" >&2
+          exit 1
+        fi
+        ;;
+      *)
+        if $DERGE; then require_pushed "$WORKTREE_DIR" "$INSTANCE" || exit 1; fi
+        REQUEST=$(finalise "$WORKTREE_DIR" "$SESSION") || exit 1
+        # /finalise may have committed; that work must reach origin before the merge.
+        if $DERGE && ! require_pushed "$WORKTREE_DIR" "$INSTANCE"; then
+          finalised_hint "$MERGE_FLAG" "$REQUEST"
+          exit 1
+        fi
+        # slop refuses a draft PR or failing checks itself (exit 1, with its message).
+        if ! MERGED=$(cd "$WORKTREE_DIR" && slop_cli merge "$INSTANCE" --json); then
+          finalised_hint "$MERGE_FLAG" "$REQUEST"
+          exit 1
+        fi
+        MERGE_STATUS=$(json_field status <<<"$MERGED")
+        ;;
+    esac
+    if $DERGE; then
+      # slop updates the branch, reruns checks and squash-merges; delete nothing until it has.
+      DONE_HINT="Once it is merged, run: sstor -i $INSTANCE --done"
+      DEADLINE=$((SECONDS + MERGE_WAIT_S))
+      POLL_FAILS=0
+      while [[ "$MERGE_STATUS" == "merging" ]] && (( SECONDS < DEADLINE )); do
+        echo "sstor: waiting for slop to merge $INSTANCE..." >&2
+        sleep 15
+        if POLLED=$(cd "$WORKTREE_DIR" && slop_cli glob "$INSTANCE" --json) && POLLED_STATUS=$(json_field status <<<"$POLLED"); then
+          MERGE_STATUS="$POLLED_STATUS"
+          POLL_FAILS=0
+        else
+          POLL_FAILS=$((POLL_FAILS + 1))
+          if (( POLL_FAILS >= 4 )); then
+            echo "sstor: could not read $INSTANCE's status from slop ($POLL_FAILS tries); the instance is kept. $DONE_HINT (or re-run sstor -i $INSTANCE --derge)" >&2
+            exit 1
+          fi
+        fi
+      done
+      case "$MERGE_STATUS" in
+        reviewing|signed_off) ;;
+        merging)
+          echo "sstor: $INSTANCE is still merging after $((MERGE_WAIT_S / 60)) min; the instance is kept. $DONE_HINT (or re-run sstor -i $INSTANCE --derge)" >&2
+          exit 1
+          ;;
+        *)
+          echo "sstor: $INSTANCE is $MERGE_STATUS, not merged; the instance is kept (see the glob view). $DONE_HINT" >&2
+          exit 1
+          ;;
+      esac
+      echo "sstor: $INSTANCE merged ($MERGE_STATUS)"
+    elif [[ "$MERGE_STATUS" == "merging" ]]; then
+      echo "sstor: $INSTANCE is merging; slop updates the branch, reruns checks and squash-merges"
+    else
+      echo "sstor: $INSTANCE: $MERGE_STATUS"
+    fi
   fi
 
   if $DERGE || $DONE; then
@@ -467,14 +659,6 @@ else
   fi
 fi
 
-if $NEW_SETUP || [[ -n "$GLOB" ]]; then
-  # Before Claude starts, so new agents and commands register.
-  if ! slop_init "$START_DIR"; then
-    [[ -n "$GLOB" ]] && exit 1
-    echo "Continuing without a fresh agent set"
-  fi
-fi
-
 # Read project config from .sstor/sstor.conf (if no --server was passed)
 SSTOR_CONF="$REPO_DIR/.sstor/sstor.conf"
 if [[ -z "$SERVER_CMD" ]] && [[ -f "$SSTOR_CONF" ]]; then
@@ -532,6 +716,15 @@ tmux_go() {
 
 if tmux has-session -t "=$SESSION" 2>/dev/null; then
   tmux_go "$SESSION"
+fi
+
+# Claude is about to (re)launch: install the agent set first, so new agents and commands
+# register. Never while Claude runs in an existing session (handled above).
+if $NEW_SETUP || [[ -n "$GLOB" ]]; then
+  if ! checkout_init "$START_DIR"; then
+    [[ -n "$GLOB" ]] && exit 1
+    echo "Continuing without a fresh agent set"
+  fi
 fi
 
 WINDOW=1

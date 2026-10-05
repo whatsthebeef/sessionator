@@ -12,3 +12,9 @@
 
 ### sstor ###
 .sstor/.url
+
+### python ###
+__pycache__/
+
+### macOS ###
+.DS_Store
