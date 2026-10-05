@@ -552,17 +552,34 @@ if $MERGE || $DERGE || $DONE; then
   fi
 
   if $DERGE || $DONE; then
-    if tmux has-session -t "$SESSION" 2>/dev/null; then
+    # Killing the session we are running in ends this script, so the kill comes last,
+    # after the client has been moved to the project session and all cleanup has printed.
+    KILL_SESSION=false
+    if tmux has-session -t "=$SESSION" 2>/dev/null; then
+      KILL_SESSION=true
       if [[ -n "${TMUX:-}" ]] && [[ "$(tmux display-message -p '#S')" == "$SESSION" ]]; then
-        if ! tmux has-session -t "$PROJECT" 2>/dev/null; then
-          sstor --project="$PROJECT" </dev/null >/dev/null 2>&1 &
-          sleep 1
+        if ! tmux has-session -t "=$PROJECT" 2>/dev/null; then
+          if tmux new-session -d -s "$PROJECT" -c "$REPO_DIR"; then
+            echo "Created session: $PROJECT"
+          else
+            echo "sstor: could not create session $PROJECT; leaving $SESSION alive" >&2
+            KILL_SESSION=false
+          fi
         fi
-        tmux switch-client -t "$PROJECT"
+        if $KILL_SESSION; then
+          if tmux switch-client -t "=$PROJECT"; then
+            echo "Switched to session: $PROJECT"
+          else
+            echo "sstor: could not switch to $PROJECT; leaving $SESSION alive" >&2
+            KILL_SESSION=false
+          fi
+        fi
       fi
+    fi
+    # The shell may be inside the worktree that is about to be removed
+    cd "$REPO_DIR"
+    if $KILL_SESSION; then
       cleanup_server "$WORKTREE_DIR"
-      tmux kill-session -t "$SESSION"
-      echo "Killed session: $SESSION"
     fi
     if [[ -d "$WORKTREE_DIR" ]]; then
       git -C "$REPO_DIR" worktree remove --force "$WORKTREE_DIR"
@@ -573,6 +590,10 @@ if $MERGE || $DERGE || $DONE; then
       echo "Deleted branch: $INSTANCE"
     fi
     git -C "$REPO_DIR" fetch --prune --quiet origin || true
+    if $KILL_SESSION; then
+      echo "Killed session: $SESSION"
+      tmux kill-session -t "=$SESSION"
+    fi
   fi
   exit 0
 fi
