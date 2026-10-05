@@ -10,7 +10,10 @@ Personal settings never come from slop: they live in sessionator's own
   sandbox             deep merge: lists unioned, scalars set only where missing
                       (mcp.atlassian.com dropped)
 
-Skipped when the source is missing or is the target itself. The target is written atomically and
+It also installs the glob guard (sstor_glob_guard.py) as a PreToolUse hook on Bash, keeping an
+instance on its own glob; the hook does nothing where .sstor/glob is absent.
+
+The merge is skipped when the source is missing or is the target itself. The target is written atomically and
 kept out of git through the repo's untracked info/exclude (never a tracked .gitignore).
 
 Usage: sstor_init.py <source settings.local.json> <checkout>
@@ -31,6 +34,7 @@ TARGET = Path('.claude') / 'settings.local.json'
 SKIP_ENV = {'TASK_APP_URL'}
 SKIP_PERMISSION_PREFIX = 'mcp__atlassian'
 SKIP_SANDBOX_VALUES = {'mcp.atlassian.com'}
+GUARD = Path(__file__).resolve().parent / 'sstor_glob_guard.py'
 
 
 def fail(message: str) -> NoReturn:
@@ -97,6 +101,23 @@ def merge_local(current: dict, source: dict) -> dict:
     return merged
 
 
+def install_guard(settings: dict) -> dict:
+    """Adds the glob guard as a Bash PreToolUse hook (once, whatever path an older install used)."""
+    command = f'python3 {GUARD}'
+    hooks = dict(settings.get('hooks', {}))
+    entries = list(hooks.get('PreToolUse', []))
+    for entry in entries:
+        if any(h.get('command', '').endswith('sstor_glob_guard.py') for h in entry.get('hooks', [])):
+            for h in entry['hooks']:
+                if h.get('command', '').endswith('sstor_glob_guard.py'):
+                    h['command'] = command
+            hooks['PreToolUse'] = entries
+            return {**settings, 'hooks': hooks}
+    entries.append({'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': command}]})
+    hooks['PreToolUse'] = entries
+    return {**settings, 'hooks': hooks}
+
+
 def write_atomically(path: Path, text: str) -> None:
     """Writes through a temp file in the same folder, so an interrupted write never truncates it."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -135,15 +156,14 @@ def main() -> None:
         sys.exit(2)
     source_path, root = Path(sys.argv[1]), Path(sys.argv[2])
     target_path = root / TARGET
-    if not source_path.is_file():
-        return
-    if target_path.exists() and os.path.samefile(source_path, target_path):
-        return
     current = read_json(target_path) if target_path.exists() else {}
-    merged = merge_local(current, read_json(source_path))
+    merged = current
+    if source_path.is_file() and not (target_path.exists() and os.path.samefile(source_path, target_path)):
+        merged = merge_local(current, read_json(source_path))
+    merged = install_guard(merged)
     if merged != current or not target_path.exists():
         write_atomically(target_path, json.dumps(merged, indent=2) + '\n')
-        print(f'sstor init: merged your personal settings into {TARGET}')
+        print(f'sstor init: merged your personal settings and the glob guard into {TARGET}')
     ensure_ignored(root)
 
 

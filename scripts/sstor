@@ -96,7 +96,9 @@ NEW_TYPE=""
 NEW_CATEGORY=""
 NEW_ROUTINE=false
 NEW_PROMPT=""
+ENV_NAME=""
 READY=false
+CHECKPOINT=false
 DONE=false
 FINALISED=""
 REVIEW=""
@@ -127,7 +129,12 @@ while [[ $# -gt 0 ]]; do
     --same|--sub|--super) NEW_TYPE="${1#--}" ;;
     --feature|--task|--bug) NEW_CATEGORY="${1#--}" ;;
     --routine) NEW_ROUTINE=true ;;
+    --env=*) ENV_NAME="${1#--env=}" ;;
+    --env)
+      [[ $# -ge 2 && "$2" != -* ]] || { echo "--env needs an environment name"; exit 1; }
+      ENV_NAME="$2"; shift ;;
     --ready) READY=true ;;
+    --checkpoint) CHECKPOINT=true ;;
     --done) DONE=true ;;
     --finalised=*) FINALISED="${1#--finalised=}" ;;
     --finalised) FINALISED="$2"; shift ;;
@@ -163,20 +170,31 @@ Slop globs (through the slop CLI; board from SLOP_BOARD in .sstor/sstor.conf):
   --glob <id>             Pick up a glob (slop pick-up), make its worktree on its branch,
                           slop init + personal settings, launch /run-glob
   --take-over             With --glob: supersede a queued or active routine run
+  --env <name>            With --glob or --new: the glob's environment (one of the board's
+                          environments that allow branch deploys); with --deploy: deploy there
+                          instead of the glob's environment
   --force                 With --glob/--new: skip the check that the local base branch is pushed
   --new "<prompt>"        Create a glob through slop's intake (slop new; same by default),
-     [--same|--sub|--super] [--feature|--task|--bug] [--routine]
+     [--same|--sub|--super] [--feature|--task|--bug] [--routine] [--env <name>]
                           then pick it up. Subs and --routine sames are left to a routine
                           (nothing opens locally)
   --ready                 /finalise in Claude, then slop ready (push, mark the PR ready)
+  --checkpoint            /finalise in Claude, slop's merge-and-continue for a super, then merge
+                          origin/<base> into the glob branch and push
   -m, --merge             /finalise in Claude, then slop merge (like the glob's Merge button)
   -g, --derge             --merge, wait for slop to finish merging, then delete the instance
   --done                  Delete the instance of a glob merged elsewhere
-  --finalised <id>        With --ready/--merge/--derge: /finalise <id> already ran in Claude
+  --finalised <id>        With --ready/--checkpoint/--merge/--derge: /finalise <id> already ran
+                          in Claude
+
+An instance is for one glob (recorded in <worktree>/.sstor/glob; a Claude hook blocks switching it
+to another glob's branch). --ready, --checkpoint, --merge and --derge stop at once, without waiting
+for /finalise, when the worktree isn't on the glob's branch or Claude isn't running in its window.
   --review <id|sha>       Review a glob's changes or a commit (no code changes)
 
 Deploy:
-  --deploy                Run the project's .sstor/deploy.sh script from the current branch
+  --deploy [--env <name>] Run the project's .sstor/deploy.sh <env> from the current branch, with
+                          the glob's environment (from slop) as $1 and SLOP_ENV
 
 Slop:
   init [board]            slop init [board] in this checkout (the board's agent set), then merge
@@ -269,7 +287,26 @@ if $DEPLOY; then
   fi
 
   cd "$DEPLOY_DIR"
-  exec "$DEPLOY_SCRIPT"
+  # .sstor/deploy.sh <env> is the repo's single deploy entry point (slop's deploys run it too).
+  # The environment is --env, else the glob's environment in slop (a glob's branch is its ID).
+  DEPLOY_ENV="$ENV_NAME"
+  DEPLOY_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  DEPLOY_GLOB_RE='^s[1-9][0-9]*[ftbh][1-9][0-9]*$'
+  if [[ -z "$DEPLOY_ENV" && "$DEPLOY_BRANCH" =~ $DEPLOY_GLOB_RE ]]; then
+    require_slop
+    DEPLOY_GLOB=$(slop_cli glob "$DEPLOY_BRANCH" --json) || exit 1
+    DEPLOY_ENV=$(json_field environment <<<"$DEPLOY_GLOB") || exit 1
+    if [[ -z "$DEPLOY_ENV" ]]; then
+      echo "sstor: $DEPLOY_BRANCH has no environment. Choose one with: sstor --glob $DEPLOY_BRANCH --env <name>, or pass --env" >&2
+      exit 1
+    fi
+  fi
+  if [[ -z "$DEPLOY_ENV" ]]; then
+    echo "sstor: $DEPLOY_BRANCH is not a glob branch and no --env was given; running $DEPLOY_SCRIPT without an environment" >&2
+    exec "$DEPLOY_SCRIPT"
+  fi
+  echo "sstor: deploying $DEPLOY_BRANCH to $DEPLOY_ENV" >&2
+  SLOP_ENV="$DEPLOY_ENV" exec "$DEPLOY_SCRIPT" "$DEPLOY_ENV"
 fi
 
 # Slop creates glob branches from GitHub's base branch, so refuses (in the main checkout, never a
@@ -297,13 +334,14 @@ require_base_pushed() {
 
 # --new creates a glob through slop's intake; subs and --routine sames stay with a routine.
 if $NEW; then
-  [[ -n "$NEW_PROMPT" ]] || { echo "Usage: sstor --new [--same|--sub|--super] [--feature|--task|--bug] [--routine] \"<prompt>\""; exit 1; }
+  [[ -n "$NEW_PROMPT" ]] || { echo "Usage: sstor --new [--same|--sub|--super] [--feature|--task|--bug] [--routine] [--env <name>] \"<prompt>\""; exit 1; }
   require_slop
   require_base_pushed || exit 1
   NEW_ARGS=()
   [[ -n "$NEW_TYPE" ]] && NEW_ARGS+=("--$NEW_TYPE")
   [[ -n "$NEW_CATEGORY" ]] && NEW_ARGS+=("--$NEW_CATEGORY")
   $NEW_ROUTINE && NEW_ARGS+=(--routine)
+  [[ -n "$ENV_NAME" ]] && NEW_ARGS+=(--env "$ENV_NAME")
   CREATED=$(cd "$REPO_DIR" && slop_cli new ${NEW_ARGS[@]+"${NEW_ARGS[@]}"} --json "$NEW_PROMPT") || exit 1
   ID=$(json_field id <<<"$CREATED")
   TYPE=$(json_field type <<<"$CREATED")
@@ -322,6 +360,8 @@ if [[ -n "$GLOB" ]]; then
   $NEW || require_base_pushed || exit 1
   PICK_UP_ARGS=("$GLOB")
   $TAKE_OVER && PICK_UP_ARGS+=(--take-over)
+  # After --new the glob already has it, and picking up with the same environment changes nothing.
+  [[ -n "$ENV_NAME" ]] && PICK_UP_ARGS+=(--env "$ENV_NAME")
   BRANCH=$(cd "$REPO_DIR" && slop_cli pick-up "${PICK_UP_ARGS[@]}") || exit 1
   # The glob's branch is its ID; anything else must not reach git or the worktree path.
   if [[ "$BRANCH" != "$GLOB" ]]; then
@@ -340,6 +380,28 @@ elif [[ -n "$REVIEW" ]]; then
   INSTANCE="review-${REVIEW}"
 fi
 
+# Records the glob an instance is for (the Claude guard hook reads it) and keeps it out of git.
+record_glob() {
+  local dir="$1" id="$2" common exclude
+  mkdir -p "$dir/.sstor"
+  echo "$id" > "$dir/.sstor/glob"
+  common=$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null) || return 0
+  [[ "$common" = /* ]] || common="$dir/$common"
+  exclude="$common/info/exclude"
+  mkdir -p "$(dirname "$exclude")"
+  grep -qxF '/.sstor/glob' "$exclude" 2>/dev/null || echo '/.sstor/glob' >> "$exclude"
+}
+
+# Stops at once unless the worktree is on the glob's branch and (unless /finalise already ran)
+# Claude is running in the session's claude window; says where the branch is checked out.
+require_instance_ready() {
+  local worktree="$1" session="$2" id="$3"
+  local args=()
+  [[ -n "$FINALISED" ]] && args+=(--finalised "$FINALISED")
+  [[ -d "$worktree" ]] || { echo "sstor: no worktree at $worktree" >&2; return 1; }
+  python3 "$SSTOR_PY/sstor_glob.py" check "$worktree" "$session" "$id" ${args[@]+"${args[@]}"}
+}
+
 # Runs /finalise in the instance's Claude window (unless --finalised), checks its marker and
 # prints the request ID.
 finalise() {
@@ -347,6 +409,7 @@ finalise() {
   local args=()
   [[ -n "$FINALISED" ]] && args+=(--finalised "$FINALISED")
   [[ -d "$worktree" ]] || { echo "sstor: no worktree at $worktree" >&2; return 1; }
+  require_instance_ready "$worktree" "$session" "${session#"${PROJECT}"-}" || return 1
   python3 "$SSTOR_PY/sstor_glob.py" finalise "$worktree" "$session" ${args[@]+"${args[@]}"}
 }
 
@@ -392,6 +455,48 @@ if $READY; then
     finalised_hint --ready "$REQUEST"
     exit 1
   fi
+  exit 0
+fi
+
+# --checkpoint: finalise, slop's merge-and-continue for a super, then bring <base> into the glob
+# branch and push.
+if $CHECKPOINT; then
+  if [[ -z "$INSTANCE" ]] && [[ "$(pwd)" == *__worktrees/* ]]; then
+    INSTANCE="$(basename "$(git rev-parse --show-toplevel)")"; INSTANCE="${INSTANCE#"${PROJECT}"-}"
+  fi
+  [[ -n "$INSTANCE" ]] || { echo "Usage: sstor -i <glob> --checkpoint"; exit 1; }
+  require_slop
+  slop_signed_in || exit 1
+  CP_DIR="$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${INSTANCE}"
+  require_instance_ready "$CP_DIR" "${PROJECT}-${INSTANCE}" "$INSTANCE" || exit 1
+  if [[ -n "$(git -C "$CP_DIR" status --porcelain --untracked-files=no)" ]]; then
+    echo "sstor: $INSTANCE has uncommitted changes in $CP_DIR; commit them first. Nothing was done" >&2
+    exit 1
+  fi
+  REQUEST=$(finalise "$CP_DIR" "${PROJECT}-${INSTANCE}") || exit 1
+  # Slop's "merge and continue" for a super (s15f3). Used once the CLI offers it.
+  if (cd "$CP_DIR" && slop_cli --help 2>&1 | grep -q 'merge-and-continue'); then
+    if ! (cd "$CP_DIR" && slop_cli merge-and-continue "$INSTANCE"); then
+      finalised_hint --checkpoint "$REQUEST"
+      exit 1
+    fi
+  else
+    echo "sstor: slop's merge-and-continue isn't available yet (s15f3); carrying on with the base merge" >&2
+  fi
+  CP_BASE=$(git -C "$CP_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  CP_BASE="${CP_BASE#origin/}"
+  if [[ -z "$CP_BASE" ]]; then
+    for b in main master; do
+      if git -C "$CP_DIR" rev-parse --verify --quiet "refs/remotes/origin/$b" >/dev/null; then CP_BASE="$b"; break; fi
+    done
+  fi
+  [[ -n "$CP_BASE" ]] || { echo "sstor: could not work out the base branch; merge it into $INSTANCE yourself and push" >&2; exit 1; }
+  git -C "$CP_DIR" fetch --quiet origin "$CP_BASE" "$INSTANCE" || exit 1
+  if ! git -C "$CP_DIR" merge --no-edit "origin/$CP_BASE"; then
+    echo "sstor: merging origin/$CP_BASE into $INSTANCE conflicted in $CP_DIR; resolve it, commit and push (git push origin $INSTANCE)" >&2
+    exit 1
+  fi
+  git -C "$CP_DIR" push origin "$INSTANCE"
   exit 0
 fi
 
@@ -530,6 +635,7 @@ if $MERGE || $DERGE || $DONE; then
         fi
         ;;
       *)
+        require_instance_ready "$WORKTREE_DIR" "$SESSION" "$INSTANCE" || exit 1
         if $DERGE; then require_pushed "$WORKTREE_DIR" "$INSTANCE" || exit 1; fi
         REQUEST=$(finalise "$WORKTREE_DIR" "$SESSION") || exit 1
         # /finalise may have committed; that work must reach origin before the merge.
@@ -702,6 +808,7 @@ if [[ -n "$INSTANCE" ]]; then
     fi
     NEW_SETUP=true
   fi
+  [[ -n "$GLOB" ]] && record_glob "$WORKTREE_DIR" "$GLOB"
 
   START_DIR="$WORKTREE_DIR"
 else
