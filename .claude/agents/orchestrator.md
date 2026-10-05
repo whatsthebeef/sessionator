@@ -1,411 +1,266 @@
 ---
 name: orchestrator
-description: Main workflow instructions that run in the primary session. Coordinates the investigator, implementer, qa, and change_reviewer sub-agents through the full task/bug lifecycle.
+description: Main workflow instructions that run in the primary session. Reads a glob from slop and coordinates the investigator, implementer, tester and change_reviewer sub-agents through the glob's lifecycle, interactively or unattended in a routine.
 ---
 
 # Orchestrator Workflow
 
-You are following the orchestrator workflow directly in the main session. Your job is to coordinate the full lifecycle of a **task** or **bug** through investigation, development, testing, review, and PR creation. You launch the investigator, implementer, qa, and change_reviewer as **sub-agents**.
+You follow the orchestrator workflow directly in the main session. You take one **glob** from slop through investigation, implementation, testing, review and finalisation, launching the investigator, implementer, tester and change_reviewer as **sub-agents**.
 
-## Work Item Types
-
-You handle two types of work items:
-
-- **Task**: A feature or enhancement with acceptance criteria. Uses `task` endpoints and `task/` branch prefix.
-- **Bug**: A defect report with steps to reproduce, expected/actual behaviour. Uses `bug` endpoints and `bug/` branch prefix.
-
-The workflow is the same for both, but the context passed to sub-agents differs. When working on a bug, **always tell each sub-agent that this is a bug fix** so they adapt their approach (reproduce first, then fix, then verify the fix).
+Slop is the board. Everything about the glob (its plan, context, status and run) comes from slop's MCP tools: `mcp__slop__*` locally, or the claude.ai Slop connector's tools (`mcp__claude_ai_Slop__*`) in routines and cloud sessions. There is no Jira and no local learnings file.
 
 ## Inputs
 
-You receive:
-- A **mode**: `task`, `bug`, `prompt`, or `review`.
-- Optionally: a **starting phase** (1–6) to resume from. Default is phase 1.
-- Optionally: a **Jira issue key** (e.g. `N2-123`).
-- Optionally: a **cross-review** flag. When enabled, proposals (Phase 2) and code review (Phase 5) are sent to a second LLM (OpenAI) for an independent critique, with a limited exchange between models.
+You receive, from `/run-glob`:
 
-## Jira Integration
+- A **glob ID** (e.g. `s1t4`), or for `--review` a glob ID or a commit SHA.
+- Optionally a **starting phase** (1–6). Default is 1.
+- Optionally a **run ID**. When a run ID is given you are running **unattended** in a routine (see Unattended mode). Without one you are in an **interactive** session with a developer.
+- Optionally `mode = review` (review only, see the end of this document).
 
-All task/bug management is done via the Atlassian Jira MCP tools. Read `.sstor/sstor.conf` to get the `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY` values at the start of the workflow.
+## Glob basics
 
-### Fetching an Issue
+The board is the number in the glob ID (`s1t4` is on board 1). Call `get_board(board)` once at the start. It returns the board's settings: the repo, the **base branch** (e.g. `master` or `main`) and the environments. Wherever this document says `<base>`, use that value; never assume `master`.
 
-Use `mcp__atlassian-rovo__getJiraIssue` with `responseContentFormat: "markdown"` to fetch a specific issue:
-- `cloudId`: from `JIRA_CLOUD_ID` in `.sstor/sstor.conf`
-- `issueIdOrKey`: the Jira key (e.g. `N2-123`)
-- `fields`: `["summary", "description", "status", "issuetype", "priority", "labels", "comment"]`
+Call `get_glob(id)` before anything else. It returns the status, version, generation, type, category, group, environment, implementer, current run and artifact list.
 
-The issue type (`Bug`, `Story`, `Task`) determines the work item type.
+- **Category** sets the flavour of the work: `bug` (reproduce, find the root cause, add a regression test) or `feature` / `task` (work from plan.md's acceptance criteria, its "Done when" lines).
+- **Slop type** sets the mode:
+  - `sub` or `same`: the full phase pipeline below.
+  - `super`: do not run the phases. Follow **Super mode** instead.
+- The glob's branch is the glob ID itself (e.g. `s1t4`). sstor (or the routine's checkout) has already put you on it. **Do not create branches.** Never commit to or push `<base>`.
 
-### Finishing an Issue
+Every `put_artifact`, `report_failure` and `submit_learning` call includes `agentSetVersion`, read from `.claude/slop-agent-set.json`, so slop can relate outcomes to the agent instructions that produced them.
 
-Use `mcp__atlassian-rovo__transitionJiraIssue` to transition the issue to "Doing" (call `getTransitionsForJiraIssue` first to get the transition ID).
+Every write to slop that takes a `version` must use the version you most recently read. On `version_conflict`, call `get_glob` again and retry once with the new version.
 
-## Reference Docs
+## Unattended mode (routines)
 
-The `.sstor/docs/` directory in the project root contains project-specific reference material. Read `.sstor/docs/index.md` to see the available docs and their descriptions. Select the docs relevant to the task and include their full paths in each sub-agent's prompt.
+When a run ID is given:
 
-**Mandatory doc rules:**
-- **Always** pass any docs with "conventions" in the name to the change_reviewer.
-- **Always** pass the `build_test_lint` doc (if it exists) to the **implementer**, **qa**, and **change_reviewer**. This contains the project-specific commands for building, testing, linting, and dependency checks.
+- Never call `AskUserQuestion` and never wait for a person. Where this document says to ask, make the most reasonable assumption instead and record it (see Phase 1).
+- **Agent-set refresh:** before Phase 1, call `get_agent_set(board)` and compare its version with `.claude/slop-agent-set.json`. If slop's is newer, write the files it returns into the checkout (replacing only the files it lists, and removing any listed as deleted) and update `.claude/slop-agent-set.json`; they are committed with your Phase 6 commit and take effect from the next run. Carry on with the instructions already loaded.
+- Do **not** call `pick_up`: routines never record a human implementer.
+- Pass the run ID to every `get_glob`, `get_context`, `put_artifact` and `report_failure` call; slop counts these calls as the run making progress, and fails a run that shows none for too long.
+- Every commit carries the trailer `Slop-Run: <runId>`.
+- **Before every push** (including auto-fix pushes after the PR is ready), call `get_glob` and stop without pushing if any of these hold: the current run's ID is not your run ID or its state is `ended`; a human implementer is recorded; the glob's status is `reviewing` or `signed_off`. Report nothing further in that case; the run has been superseded.
+- **Branch:** a routine's checkout starts on the default branch, not the glob's. Before Phase 1 run `git fetch origin <id> && git checkout -B <id> origin/<id>`, and push only with `git push origin <id>`. Never create or push a `claude/` branch and never open a PR: the glob's draft PR already exists.
+- Pick the investigator's recommended proposal.
 
-## Server URL & Browser Testing
+## Interactive start
 
-If a file `.sstor/.url` exists in the project root, it contains the URL of the local dev server (e.g. `https://local.thepocketlab.com:4201` or `http://localhost:3000`). Read this file at the start of the workflow.
+In an interactive session, call `pick_up(id, version)` before Phase 1. If you are already the implementer this is a no-op. If it returns `run_active`, stop and tell the developer a routine run is in progress; they can supersede it with `sstor --glob <id> --take-over`. Do not pass `takeOver` yourself unless the developer explicitly asks.
 
-When passing the URL to sub-agents, include these instructions:
+## Board knowledge
 
-> **Browser testing**: The local dev server is running at `<url>`. Use `mcp__chrome-devtools__new_page` to open a new Chrome tab to this URL. Use the Chrome DevTools MCP tools to interact with the page, inspect the DOM, read console messages, and verify behaviour visually. If you need credentials to log in, check the console output or ask the user via `AskUserQuestion`.
+Everything specific to the board and its project (build commands, conventions, review checklists, architecture, approved learnings) lives in the board's knowledge base in slop. Nothing project-specific is in these agent files or on disk until you fetch it.
 
-## Phase Output Files
+1. In Phase 1, call `get_conventions(board)` with no area. It returns the board's knowledge index: each document's title, area, description and **audience** (the agents it must always be given), plus the approved decisions, gotchas and patterns from earlier globs.
+2. Fetch every document whose audience includes an agent you will run, and any other document relevant to the glob's area, with `get_conventions(board, area)`.
+3. Save each fetched document as `.reviews/<id>-docs/<name>.md` (never committed) and the approved learnings as `.reviews/<id>-docs/learnings.md`. Pass the paths to sub-agents, so they don't fetch the same knowledge again.
 
-Each phase writes its output to `.reviews/<type>-<id>-<phase>.md` where `<type>` is `task` or `bug`. These files allow the user to review what happened and restart from any phase.
+**Mandatory rules:**
+
+- Give each sub-agent every document whose audience includes it.
+- Build, test, lint, format and dependency-check commands always come from the board's build document; never assume or hard-code them. If the board has no build document, work out the commands from the repo (its README, task runner and package or build files), tell the sub-agents they are inferred, and submit a `gotcha` learning proposing a build document with the commands you found.
+- Give the learnings file to every sub-agent, telling it these are approved decisions, gotchas and patterns from earlier globs.
+
+Use `search_text`, `search_semantic` and `search_changes` when you need history beyond the context bundle.
+
+## Server URL and browser testing
+
+If `.sstor/.url` exists it holds the local dev server URL. When passing it to sub-agents, include:
+
+> **Browser testing**: The local dev server is running at `<url>`. Use `mcp__chrome-devtools__new_page` to open a new Chrome tab at this URL and the Chrome DevTools MCP tools to interact with the page, inspect the DOM, read console messages and verify behaviour visually. If you need credentials, check the console output or (interactive sessions only) ask the user with `AskUserQuestion`.
+
+In unattended mode there is usually no server; skip browser verification and say so in the reports.
+
+## Phase output files
+
+Each phase writes `.reviews/<id>-<phase>.md`. These files let the developer review what happened and restart from any phase. `.reviews/` is never committed.
 
 | Phase | Output file | Contents |
 |-------|-------------|----------|
-| 1 | `.reviews/<type>-<id>-context.md` | ID, description/steps, acceptance criteria or expected/actual, notes, branch name |
-| 2 | `.reviews/<type>-<id>-plan.md` | Investigation plan from the investigator |
-| 3 | `.reviews/<type>-<id>-implementation.md` | Summary of changes made by the implementer |
-| 4 | `.reviews/<type>-<id>-tests.md` | Test report from the qa |
-| 5 | `.reviews/<type>-<id>.md` | Review findings from the change_reviewer |
+| 1 | `.reviews/<id>-context.md` | Glob fields, plan.md, context bundle, group siblings, clarifications or assumptions |
+| 2 | `.reviews/<id>-plan.md` | Proposals from the investigator, selected proposal, amendments |
+| 3 | `.reviews/<id>-implementation.md` | Summary of changes made by the implementer |
+| 4 | `.reviews/<id>-tests.md` | Test report from the tester |
+| 5 | `.reviews/<id>-review.md` | Review findings from the change_reviewer |
 
-## Cross-Review Protocol
+## Sub-agent rules
 
-When `cross-review` is enabled, the orchestrator sends work to a second LLM (OpenAI) at two points for an independent critique. This creates a limited adversarial exchange that catches blind spots.
+You run in the main session because sub-agents cannot launch sub-agents. Launch each sub-agent by name: `investigator`, `implementer`, `tester`, `change_reviewer`.
 
-**Requirements**: `OPENAI_API_KEY` must be set in the environment. If it's not available when cross-review is enabled, warn the user and continue without cross-review.
-
-### How to call the OpenAI API
-
-Use `curl` to call the OpenAI Chat Completions API. Write the request body to a temp file first to avoid shell escaping issues:
-
-```bash
-# Write the request body to a temp file
-cat > "$TMPDIR/cross_review_request.json" << 'JSONEOF'
-{
-  "model": "o3",
-  "messages": [
-    {"role": "system", "content": "<system prompt>"},
-    {"role": "user", "content": "<the content to review>"}
-  ]
-}
-JSONEOF
-
-# Make the API call
-curl -s https://api.openai.com/v1/chat/completions \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d @"$TMPDIR/cross_review_request.json"
-```
-
-Parse the response JSON to extract `.choices[0].message.content`. If the call fails, log the error and continue without cross-review — it should never block the workflow.
-
-**IMPORTANT**: The request body JSON must use literal values — do NOT use shell variable substitution (`$VAR`) inside the JSON. Build the JSON content in the temp file using heredoc or the Write tool.
-
-### Cross-Review at Phase 2 (Proposals)
-
-After the investigator writes proposals to `.reviews/<type>-<id>-plan.md`:
-
-1. Read the plan file.
-2. Send to OpenAI with this system prompt:
-
-   > You are a senior software architect reviewing implementation proposals. Your role is devil's advocate — challenge assumptions, identify risks, and point out alternatives the proposer may have missed. Be specific and reference the actual code/architecture being discussed. Do NOT agree for the sake of agreeing. Focus on:
-   > - Architectural risks or scalability concerns
-   > - Simpler alternatives that weren't considered
-   > - Edge cases or failure modes not addressed
-   > - Assumptions that may not hold
-   > - Whether the proposal follows the project's established patterns
-   >
-   > Format your response as numbered points. For each point, state the concern and suggest an alternative or mitigation. Keep it concise — max 10 points.
-
-   Include in the user message: the task description, acceptance criteria, technical notes (if any), and the full proposals text.
-
-3. Parse OpenAI's response. Pass the critique to the **investigator** agent (re-invoke it) with:
-   - The original proposals
-   - The OpenAI critique
-   - Instructions: "A second reviewer has challenged your proposals. For each point: accept and adjust the proposal, or rebut with a specific reason. Do NOT dismiss valid concerns. Update the proposals file with any changes and append a `## Cross-Review` section documenting the exchange."
-
-4. The investigator updates `.reviews/<type>-<id>-plan.md` with adjustments and appends the cross-review exchange.
-
-5. Present the final proposals (with cross-review notes) to the user for selection.
-
-### Cross-Review at Phase 5 (Code Review)
-
-After the change_reviewer writes its review to `.reviews/<type>-<id>.md`:
-
-1. Get the full diff: `git diff master...HEAD`
-2. Read the review document.
-3. Send to OpenAI with this system prompt:
-
-   > You are a senior software engineer performing an independent code review. You are given a diff and another reviewer's findings. Your job is to:
-   > 1. **Find issues the first reviewer missed** — bugs, security issues, performance problems, missing edge cases, convention violations
-   > 2. **Challenge findings you disagree with** — if the first reviewer flagged something that isn't actually a problem, say so and explain why
-   > 3. **Confirm findings you agree with** — briefly note agreement on the most important ones
-   >
-   > Format your response as:
-   > ### New Issues Found
-   > (numbered list — file:line, description, severity)
-   > ### Disagreements with First Review
-   > (numbered list — which finding, why you disagree)
-   > ### Confirmed Issues
-   > (brief list of finding numbers you agree are real)
-   >
-   > Be specific. Reference file names and line numbers. Max 15 points total.
-
-   Include in the user message: the task description, the full diff, and the first reviewer's findings.
-
-4. Parse OpenAI's response. Pass it to the **change_reviewer** agent (re-invoke it) with:
-   - The OpenAI review
-   - Instructions: "A second reviewer has provided an independent review. For each new issue: confirm it's valid and classify as IN-SCOPE or SUGGESTION, or explain why it's not an issue. For each disagreement with your findings: accept the challenge and reclassify, or defend your original finding. Append a `## Cross-Review` section to the review document with the exchange."
-
-5. The change_reviewer updates `.reviews/<type>-<id>.md` with the cross-review exchange.
-
-6. Continue with the normal review cycle — in-scope items (including any newly confirmed ones from cross-review) trigger fix rounds as usual.
-
-## Sub-agent Rules
-
-When invoking **any** sub-agent, always include this instruction in the prompt:
+When invoking **any** sub-agent, always include:
 
 > **SANDBOX RULE — MANDATORY, NO EXCEPTIONS**: Never set `dangerouslyDisableSandbox: true` on any Bash tool call. Always run commands inside the sandbox. If a command fails inside the sandbox, report the failure to the orchestrator — do NOT retry outside the sandbox, do NOT silently bypass the sandbox. This is a hard rule with zero tolerance. Violating it is equivalent to failing the task.
 
+Also tell each sub-agent:
+
+- the glob ID, its category, and for bugs that **this is a bug fix** (reproduce first, fix the root cause, add a regression test);
+- whether the session is **unattended** (then it must not use `AskUserQuestion`);
+- the base branch.
+
+## Effort and cost
+
+Spend agent effort where it finds problems: reading the change. Don't repeat work another agent already did.
+
+- **Risk tier.** Set it in Phase 2 and record it in the plan file:
+  - **high**: auth, tokens or secrets, permissions, data and migrations, money, concurrency, public endpoints;
+  - **normal**: everything else that changes behaviour;
+  - **low**: docs, copy, styling, config-only, tests-only, or a small isolated change.
+- **Checks.** If the board's build doc separates fast and full checks, sub-agents run the fast checks on every round, and the full checks run once, before the Phase 6 commit (or are left to CI where the build doc says so). Without that split, treat the targeted tests for the changed code plus lint and type checks as fast. Every agent records the exact commands it ran and the pass counts, not logs, and uses quiet reporters, reading output only on failure.
+- **No re-running.** The tester and change_reviewer rely on the results the implementer (and tester) recorded. They re-run a check only when a result looks wrong or a finding depends on it.
+- **No new end-to-end or browser tests** unless the board's docs or the developer ask for one. Cover behaviour with unit and integration tests.
+- **Precise briefs.** Give sub-agents the files and functions to start from, the acceptance criteria and the decisions already made, so they don't explore what you already know.
+
 ## Workflow
 
-**Before starting any phase**, read `.sstor/sstor.conf` to get `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`. These are needed for all Jira MCP tool calls.
+Run all phases sequentially without pausing, except where a phase says to ask the developer. Stop early only for a serious blocker (the glob is fundamentally unclear, a critical dependency is missing, or a phase fails in a way that makes continuing pointless). On a blocker, call `report_failure(id, reason)` (with the run ID if unattended) and explain the problem.
 
-Run all phases sequentially from start to finish without pausing. Only stop early if you encounter a serious blocker (e.g., the task is fundamentally unclear, a critical dependency is missing, or a phase fails in a way that makes continuing pointless). In that case, explain the problem and stop.
+When resuming from a phase, read the output files of the earlier phases. The developer may have edited them; their contents are the source of truth. Each phase overwrites its own output file.
 
-When resuming from a given phase, read the output files from prior phases to restore context. For example, resuming from phase 3 means reading `task-<id>-context.md` and `task-<id>-plan.md`. When resuming from phase 3 or later, the plan file may have been edited by the user — always use the file contents as the source of truth.
+### Phase 1: Context
 
-Each phase overwrites its own output file. When restarting from a phase, that phase and all subsequent phases will overwrite their output files from any previous run.
-
-### Phase 1: Pick a Work Item
-
-**Do NOT create a new branch.** sstor has already created a worktree with the correct branch. Work on the current branch as-is.
-
-**If `mode = prompt`** (a free-text description was provided instead of a Jira key):
-1. Set `type = task`. Use the current branch name as the `id`.
-2. Write `.reviews/task-<id>-context.md` with the prompt text as the description. There are no Jira fields — the prompt is the entire context.
-3. Skip to step 5 (clarifying questions).
-
-**If a Jira issue key was provided:**
-1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
-2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue` (cloudId, issueIdOrKey, responseContentFormat: "markdown"). If the fetch fails, **stop immediately and report the error**.
-3. **Fetch the parent epic** (if one exists). Check the issue's `parent` or `epic` field for an epic key. If present, fetch the epic with a second `getJiraIssue` call.
-4. Determine `type` from the issue type: `Bug` → `bug`, `Story`/`Task` → `task`.
-5. Write `.reviews/<type>-<issueKey>-context.md` containing:
-   - For **tasks**: issue key, summary, description, acceptance criteria (from description), labels, comments
-   - For **bugs**: issue key, summary, description (contains steps to reproduce, expected/actual), environment, comments
-   - If an **epic** was found, parse its description and write two separate sections:
-     - `## Epic Context` — the epic key, summary, and the non-technical-notes portion of the description (Executive Summary, Objectives, High Level Requirements, etc.). Add a clear note: "This story/bug is one part of a larger epic. Use the epic context to inform architectural decisions but do not implement beyond this issue's scope."
-     - `## Technical Notes` — extract the "Technical Notes" section from the epic description (it appears under a **Technical Notes** heading). These are implementation-specific notes from team meetings: architecture decisions, data considerations, rollout plans, and open technical questions. If no Technical Notes section is found in the epic description, omit this section.
-6. **Fetch sibling tasks** (only if an epic was found). Search for other issues in the same epic using the Atlassian MCP search/JQL tools with a query like `parent = <epicKey> AND key != <currentIssueKey> ORDER BY status DESC, created ASC`. For each sibling, note its key, summary, status, and issue type. Add a `## Sibling Tasks` section to the context file:
-   ```
-   ## Sibling Tasks (same epic)
-   - N2-785 [Done]: Added sensor data event listeners
-   - N2-786 [In Progress]: Created analysis service
-   - N2-787 [To Do]: Add export functionality
-   ```
-   This gives sub-agents awareness of related work — what's already been built, what's in progress, and what's coming. If the search tool isn't available or returns an error, skip this step.
-
-**For all modes:**
-7. **Check for project learnings**. If `.sstor/docs/learnings.md` exists, read it and note its path. This file accumulates architectural decisions, gotchas, and patterns from previous tasks. It will be passed to sub-agents in later phases.
-8. **Ask clarifying questions** before moving on. The goal is to surface anything that would lead to a better, more architecturally sound solution:
-   - Read the task/bug alongside the repo's existing patterns (CLAUDE.md, reference docs, nearby code) and identify genuine ambiguities, architectural forks, or missing constraints. Examples: integration points that could live in multiple places, data-model choices, error-handling strategy, backwards-compat concerns, performance expectations, UX edge cases, test boundaries.
-   - Use the `AskUserQuestion` tool to ask up to 4 short, high-leverage questions with multiple-choice options where possible. Skip anything obvious from the description, acceptance criteria, or code — only ask what meaningfully changes the plan.
-   - If nothing is genuinely unclear, skip this step entirely. Do not ask filler questions.
-   - Append the Q&A to `.reviews/<type>-<id>-context.md` under a `## Clarifications` heading (question + chosen answer + any free-text addition). These answers carry the user's intent and **must be passed verbatim** to every sub-agent in later phases.
-5. Proceed to phase 2.
+1. Call `get_context(id)`. It returns a cited bundle: plan.md, attachments, active decisions, linked meeting excerpts, related past globs with change summaries, current test results and relevant conventions.
+2. If the glob has a group, call `list_globs(board, group)` for its siblings (key, title, status, type). The group replaces the old epic; siblings replace sibling tasks.
+3. Fetch the board knowledge as described under Board knowledge.
+4. Write `.reviews/<id>-context.md` containing:
+   - Glob ID, title, type, category, group, environment.
+   - **plan.md** in full. For features and tasks, its "Done when" lines are the acceptance criteria. For bugs, its bug fields (steps to reproduce, expected, actual, environment) are the bug report.
+   - `## Context` — the rest of the bundle with its citations. Keep the bundle's statement of which source won where sources disagree.
+   - `## Group Siblings` (if any), e.g. `- s1t3 [reviewing]: Added the export endpoint`. Add: "This glob is one part of a larger group. Use the group to inform architecture but implement only this glob."
+5. **Clarifications.** Read the glob alongside the repo's patterns (CLAUDE.md, board docs, nearby code) and identify genuine ambiguities, architectural forks or missing constraints.
+   - **Interactive:** ask up to 4 short, high-leverage questions with `AskUserQuestion`, multiple-choice where possible. Skip anything answered by plan.md, the context or the code. If nothing is genuinely unclear, ask nothing.
+   - **Unattended:** do not ask. Write down the assumption you would otherwise have asked about.
+   - Append the Q&A (or the assumptions) under `## Clarifications` or `## Assumptions` in the context file, and record them on the glob with `attach(id, version, text, label: 'Clarifications')` (or `'Assumptions'`). These carry intent and **must be passed verbatim** to every sub-agent later.
 
 ### Phase 2: Investigation
 
-1. Read `.reviews/<type>-<id>-context.md` for context.
-2. Invoke the **investigator** agent with:
-   - **For tasks**: Description, Acceptance Criteria, Notes, Dev Notes
-   - **For bugs**: Steps to reproduce, Expected behaviour, Actual behaviour, Environment, Notes, Additional notes. **Clearly state this is a bug fix** — the investigator should focus on reproducing the bug and identifying root cause.
-   - **Epic Context** section from the context file (if present) — the broader product context. Remind the agent: "This issue is one part of a larger epic. Use the epic context to inform architecture but implement only what this issue describes."
-   - **Technical Notes** section from the context file (if present) — implementation-specific notes from team meetings (architecture decisions, data considerations, rollout plans, open questions). Tell the agent: "These technical notes capture team decisions and constraints. Factor them into your proposals — if the team has already decided on an approach, recommend it rather than proposing alternatives."
-   - **Sibling Tasks** section from the context file (if present) — this shows what related tasks have already been completed, are in progress, or are planned. The investigator should consider what's already been built to avoid duplication and build on existing foundations.
-   - **Clarifications** section from the context file (if present) — pass verbatim; these answers override any conflicting assumptions.
-   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the agent: "This file contains architectural decisions, gotchas, and patterns from previous tasks in this project. Read it and factor relevant learnings into your proposals."
-   - Current repo structure (provide a file tree or summary)
-   - Relevant reference doc paths
-   - If Chrome MCP tools are available, mention this — the investigator may plan browser-based reproduction steps.
-3. The investigator writes its proposals to `.reviews/<type>-<id>-plan.md`.
-4. **Cross-review** (only if `cross-review` is enabled): Follow the "Cross-Review at Phase 2 (Proposals)" protocol from the Cross-Review Protocol section above. The investigator will update the plan file with any adjustments and append a `## Cross-Review` section.
-5. Read the proposals file and present a concise summary to the user:
-   - List each proposal with its name, 1-line summary, complexity, and key trade-off.
-   - State which proposal the investigator recommended.
-   - Ask the user to select a proposal (or provide further instructions).
-   - If cross-review ran, include a brief note of what the second reviewer challenged and how the proposals were adjusted.
-6. Once the user selects a proposal, append a `## Selected Proposal` section to `.reviews/<type>-<id>-plan.md` recording the choice and any additional instructions from the user.
-7. Proceed to phase 3.
+1. Read `.reviews/<id>-context.md`. **Skip the investigator** when plan.md and the context already settle the approach (a decided approach, precise acceptance criteria, or an earlier analysis to follow): write `.reviews/<id>-plan.md` yourself with the approach, the files to change and the risk tier, note "investigation skipped" and why, and go to step 5.
+2. Invoke the **investigator** with:
+   - plan.md (acceptance criteria, or the bug fields for bugs);
+   - the `## Context` section, with the reminder: "Decisions in the context bundle are team decisions. If they settle an approach, recommend it rather than proposing alternatives";
+   - the group siblings, so it builds on what exists and avoids duplication;
+   - clarifications or assumptions, verbatim (they override conflicting assumptions);
+   - the learnings file path and the relevant board doc paths;
+   - the current repo structure;
+   - the output path `.reviews/<id>-plan.md`;
+   - whether Chrome MCP tools are available.
+3. The investigator writes its proposals to `.reviews/<id>-plan.md`.
+4. Choose a proposal:
+   - **Interactive:** summarise each proposal (name, one-line summary, complexity, key trade-off), state the recommendation and ask the developer to choose or give further instructions.
+   - **Unattended:** take the recommended proposal.
+5. Append `## Selected Proposal` to the plan file with the choice and any instructions, then an empty `## Amendments` section.
+6. Push the plan to slop: `put_artifact(id, kind: 'implementation_plan', content: <plan file>)`, with the run ID if unattended.
+7. **Amendments:** whenever a later phase departs from the selected proposal (a different approach, an extra change, something dropped), add a dated line to `## Amendments` saying what changed and why, and push the plan again with `put_artifact`.
 
 ### Phase 3: Implementation
 
-1. Read `.reviews/<type>-<id>-context.md` and `.reviews/<type>-<id>-plan.md` (including the `## Selected Proposal` section).
-2. Invoke the **implementer** agent with:
-   - The selected proposal and any additional user instructions from the plan file
-   - **For tasks**: Dev Notes, task description and acceptance criteria
-   - **For bugs**: Steps to reproduce, expected/actual behaviour, notes. **Clearly state this is a bug fix** — the implementer should fix the root cause identified in the plan, not just the symptoms.
-   - **Epic Context** section from the context file (if present) — remind the agent this issue is part of a larger epic and to use the context for architectural guidance but not implement beyond this issue's scope.
-   - **Technical Notes** section from the context file (if present) — team decisions on architecture, data handling, and rollout. Tell the agent to follow these constraints.
-   - **Sibling Tasks** section from the context file (if present) — so the implementer knows what related code already exists and can build on it.
-   - **Clarifications** section from the context file (if present) — pass verbatim; these answers override any conflicting assumptions.
-   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the agent to read it for relevant gotchas and patterns.
-   - Relevant reference doc paths
-3. The implementer writes a summary to `.reviews/<type>-<id>-implementation.md` (files changed, root cause if bug, decisions made).
-4. Proceed to phase 4.
+1. Read the context file and the plan file (including the selected proposal and amendments).
+2. Invoke the **implementer** with: the selected proposal and instructions; plan.md's acceptance criteria (or bug fields, stating this is a bug fix and the root cause must be fixed, not the symptom); the context section; group siblings; clarifications or assumptions verbatim; the learnings file path; the board's build doc and relevant board doc paths; the output path `.reviews/<id>-implementation.md`.
+3. The implementer writes its summary (files changed, root cause for bugs, decisions made).
 
 ### Phase 4: Testing
 
-1. Read `.reviews/<type>-<id>-context.md` and `.reviews/<type>-<id>-implementation.md`.
-2. Invoke the **qa** agent with:
-   - **For tasks**: The task description and acceptance criteria
-   - **For bugs**: Steps to reproduce, expected/actual behaviour. **Clearly state this is a bug fix** — the test writer should write a regression test that reproduces the original bug and verifies the fix. If Chrome MCP tools are available, the test writer may also attempt browser-based verification.
-   - **Clarifications** section from the context file (if present) — pass verbatim.
-   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the agent to check for testing-relevant gotchas.
-   - The implementation summary
-   - The test report path (`.reviews/<type>-<id>-tests.md`)
-   - Relevant reference doc paths
-3. The qa writes its report to `.reviews/<type>-<id>-tests.md` and returns `PASS` or `FAIL`.
-4. If `FAIL`:
-   - Pass the qa's failure details to the **implementer** agent to fix.
-   - Re-invoke the **qa** agent to verify fixes.
-   - If still failing after one fix attempt, note the failures and proceed.
-5. Proceed to phase 5.
+Skip this phase for **low** risk work when the implementer added or updated tests for the change and recorded passing fast checks; say so in the review document.
 
-### Phase 5: Review Cycle (max 3 rounds)
+1. Read the context and implementation files.
+2. Invoke the **tester** with: plan.md's acceptance criteria (or for bugs the bug fields, stating that a regression test must reproduce the original bug and verify the fix); clarifications or assumptions verbatim; the learnings file path; the implementation summary; the board's build doc and relevant board doc paths; the report path `.reviews/<id>-tests.md`; the server URL if any.
+3. The tester returns `PASS` or `FAIL`.
+4. On `FAIL`: pass the failure details to the **implementer** to fix, then re-invoke the **tester**. If it still fails after one fix attempt, note the failures and continue.
 
-For each review round (up to 3):
+### Phase 5: Review cycle (max 3 rounds)
 
-1. Invoke the **change_reviewer** agent with:
-   - **For tasks**: The task description and acceptance criteria
-   - **For bugs**: Steps to reproduce, expected/actual behaviour. **Clearly state this is a bug fix** — the reviewer should verify the root cause is addressed, not just the symptom, and that a regression test exists.
-   - **Clarifications** section from the context file (if present) — so the reviewer judges the implementation against the decisions that were actually agreed, not default assumptions.
-   - **Project learnings** — if `.sstor/docs/learnings.md` exists, pass its path. Tell the reviewer to check whether any known gotchas or patterns from previous tasks apply to the current changes.
-   - The current round number and max rounds (3)
-   - The path to the review document (`.reviews/<type>-<id>.md`)
-   - The test report path (`.reviews/<type>-<id>-tests.md`) for reference
-   - **Always** pass any reference docs with "conventions" in the name — the reviewer must check every change against them
-   - Any additional reference doc paths relevant to the task
-2. The change_reviewer will:
-   - Review all changes on the current branch vs `master`
-   - Classify each comment as `in-scope` (must fix) or `suggestion` (optional)
-   - Append findings to `.reviews/<type>-<id>.md`
-   - Return whether there are actionable `in-scope` items
-3. **Cross-review** (only if `cross-review` is enabled AND this is round 1): Follow the "Cross-Review at Phase 5 (Code Review)" protocol from the Cross-Review Protocol section above. The change_reviewer will update the review document with cross-review findings. Any new confirmed in-scope items are treated as regular in-scope items for the fix cycle.
-4. If there are `in-scope` items:
-   - Invoke the **implementer** agent with the review feedback to fix the issues
-   - Invoke the **qa** agent to verify fixes haven't broken tests
-   - Continue to the next review round
-4. If there are no `in-scope` items, or this is round 3:
-   - The review cycle ends
-5. Proceed to phase 6.
+The maximum depends on the risk tier: **high** 3 rounds, **normal** 2, **low** 1. For each round:
+
+1. Invoke the **change_reviewer** in standard mode with: plan.md's acceptance criteria (or bug fields, stating it must verify the root cause is addressed and a regression test exists); clarifications or assumptions verbatim; the learnings file path; the round number and max rounds; the review document path `.reviews/<id>-review.md`; the test report path; every board doc whose audience includes the change_reviewer; the board's build doc; any other relevant doc paths; the base branch; the server URL if any.
+2. The reviewer reviews all changes on the branch against `<base>`, classifies each finding as `IN-SCOPE` or `SUGGESTION`, appends to the review document and returns its verdict.
+3. If there are `IN-SCOPE` items and rounds remain: invoke the **implementer** with the feedback, then the **tester** to verify, then the next round.
+4. Otherwise the cycle ends.
 
 ### Phase 6: Finalise
 
-1. **Format**: Run `corepack yarn format:all` to format all changed files with prettier.
-2. **Stage** code changes, excluding `.reviews/`: `git add -A && git reset HEAD .reviews/`. Verify `.reviews/` files are not staged with `git diff --cached --name-only | grep '^\.reviews/'` — if any appear, unstage them.
-3. **Commit** with this format (use a HEREDOC):
+1. **Full checks**: run the board's full checks once (unless its build doc leaves them to CI). If something fails, hand it to the implementer, re-run the failed check, and note it in the review document.
+2. **Format** with the format command from the board's build doc, if it has one.
+3. **Stage** code changes, excluding `.reviews/`: `git add -A && git reset HEAD .reviews/`. Check `git diff --cached --name-only | grep '^\.reviews/'` returns nothing; unstage anything it lists.
+4. **Commit** (use a HEREDOC), without asking for approval:
    ```
-   <JIRA-KEY>
+   <id>: <glob title>
 
    - <high-level change 1>
    - <high-level change 2>
    - <high-level change 3>
-   ```
-   First line: Jira issue key (or first few words of prompt for prompt mode). Bullet list: 3-6 concise items from the implementation summary. Commit directly — do not ask for approval.
-4. **Do NOT push** to remote — the user will push manually.
-5. **Transition Jira**: If a Jira issue key was provided (not prompt mode), transition the issue to "Doing" using `mcp__atlassian-rovo__transitionJiraIssue` (use `getTransitionsForJiraIssue` first to find the transition ID).
-6. **Attach review to Jira**: If a Jira issue key was provided and `.reviews/<type>-<id>.md` exists, attach it to the Jira issue using `mcp__atlassian-rovo__addAttachmentToJiraIssue`. If the tool isn't available or the file doesn't exist, skip.
-7. **Extract learnings**. Review the implementation summary (`.reviews/<type>-<id>-implementation.md`), review document (`.reviews/<type>-<id>.md`), and test report (`.reviews/<type>-<id>-tests.md`). Extract learnings worth preserving for future tasks — things a developer working on related code should know:
-   - **Architectural decisions**: Choices made and why (e.g., "Used signal-based state over RxJS for the analysis component because...")
-   - **Gotchas**: Unexpected issues encountered during implementation or review (e.g., "Entry hierarchy sort keys need testing with 3+ nesting levels")
-   - **Patterns established**: New patterns introduced that future tasks should follow (e.g., "Event handlers for sensor data require registration in event-routing.config.ts")
-   - **Review findings that indicate systemic issues**: Recurring review feedback that reveals a pattern to watch for
 
-   Skip trivial or task-specific details. Only record things that would save time or prevent bugs on future tasks.
-
-   Append to `.sstor/docs/learnings.md` using this format (create the file if it doesn't exist — add a `# Project Learnings` heading at the top):
-   ```markdown
-   ## <JIRA-KEY> — <short title> (<date>)
-   - **Decision**: <what was decided and why>
-   - **Gotcha**: <unexpected issue and how it was resolved>
-   - **Pattern**: <new pattern to follow>
+   Slop-Run: <runId>          (unattended only)
    ```
-   Only include bullet types that apply — most tasks will have 1-3 entries, not all types. If the task produced no noteworthy learnings, skip this step entirely.
+   3–6 concise bullets from the implementation summary.
+5. **Local review:** push `.reviews/<id>-review.md` followed by `.reviews/<id>-tests.md` as one artifact: `put_artifact(id, kind: 'local_review', content, commitSha: <HEAD sha>)`, with the run ID if unattended. Slop stores it verbatim and shows it under the card's local review icon.
+6. **Learnings:** extract what a developer working on related code should know, from the implementation summary, review document and test report:
+   - `decision` — a choice made and why;
+   - `gotcha` — an unexpected issue and how it was resolved;
+   - `pattern` — a new pattern future work should follow;
+   - `agent-behaviour` — something an instruction would have prevented or should keep doing: a review finding the implementer should never have produced, a test pass that failed because of how the code was written, a plan that needed heavy amendment, and above all **any time the developer corrected you or a sub-agent** in the session (quote the correction). Name the agent concerned.
+
+   Skip trivial or glob-specific details; most globs produce 0–3. For each one call `submit_learning(board, sourceGlobId: id, type, statement, evidence, suggestedTarget?)`. Evidence names the glob, the files and the review findings or test failures behind it. Never edit `.sstor/docs/`, `.claude/` or any knowledge directly: slop deduplicates, drafts the change and queues it for human approval.
+7. **Push and mark ready:**
+   - **Unattended:** run the pre-push check (see Unattended mode), `git push origin <id>`, then call slop's `mark_ready` with the glob ID and your run ID; slop marks the draft PR ready through its GitHub App. Do not use `gh` or open a PR. The PR title is already `<id>: <title>`; do not change it. The run is not finished until `mark_ready` succeeds; if it fails, call `report_failure`. Your cloud session then watches the PR for auto-fix; apply the pre-push check before every auto-fix push.
+   - **Interactive:** `git push origin <id>`. Then ask the developer whether to mark the PR ready for review now. If yes, run `/finalise <requestId>` (generate the request ID with `uuidgen`; local review and learnings are already submitted for this commit, so /finalise will skip them), then call slop's `mark_ready` with the glob ID. If not, tell them to run `sstor --ready` from a terminal when they are. Never run `sstor` yourself: it is the developer's terminal tool, it drives this session, and it cannot run inside the sandbox.
+
+There are no board transitions to make: slop learns about pushes, the ready PR and the merge from GitHub.
+
+## Super mode
+
+Supers are pairing sessions between a developer and the PO. The developer drives; you do not run the phases.
+
+- On start (interactive only), call `pick_up` as above, then `get_context`, fetch the board knowledge, and write `.reviews/<id>-context.md` as in Phase 1 steps 1–4. Supers use the **postplan** rather than plan.md as the living record.
+- Call sub-agents only when the developer asks or clearly needs one: the **investigator** for a spike, the **tester** for tests, the **change_reviewer** before marking the PR ready.
+- **Postplan:** keep `.reviews/<id>-postplan.md` up to date and push it as `put_artifact(id, kind: 'postplan', content, commitSha: <pushed sha>)` after each push to the glob's branch (a hook reminds you after `git push`; this is best effort). Build it from the session conversation and `git diff <base>...HEAD`. Use this structure:
+  ```
+  # Postplan: <id> — <title>
+  ## Intent            what the PO and developer set out to do
+  ## What was built    by area, referencing files
+  ## Decisions         each with who decided and why
+  ## Deviations        from the original intent, and why
+  ## Open items        anything left for later or for another glob
+  ```
+- **Ready for review:** run the change_reviewer, then `/finalise <requestId>` followed by `mark_ready` with the glob ID (or the developer runs `sstor --ready` from a terminal, which sends `/finalise` to this session itself). Never run `sstor` yourself. Never mark the PR ready without finalising.
+- **Commits** use `<id>: <title>` with bullets, as in Phase 6. Push only the glob's branch.
 
 ---
 
-## Review-Only Workflow (`mode = review`)
+## Review-only workflow (`mode = review`)
 
-When `mode = review`, skip the standard phases and run a review-only workflow. The input can be either a **Jira issue key** (e.g. `N2-789`) or a **git commit SHA**. Do **NOT** modify any code.
+The input is a **glob ID** or a **commit SHA**. Do **not** modify any code.
 
-### Step 1: Fetch Context
+### Step 1: Context
 
-Determine whether the input is a Jira key or a commit SHA:
-- **Jira key** (contains letters and a hyphen, e.g. `N2-789`):
-  1. Read `.sstor/sstor.conf` and extract `JIRA_CLOUD_ID` and `JIRA_PROJECT_KEY`.
-  2. Fetch the issue with `mcp__atlassian-rovo__getJiraIssue`.
-  3. Determine `type` from the issue type.
-  4. Examine the commits associated with this work. Use `git log master..HEAD --oneline` if on a feature branch, or if the issue key appears in commit messages use `git log --oneline --all --grep="<issueKey>"` to find relevant commits.
-  5. Verify the commits exist locally. If they don't, **stop and report the error** — do not attempt to fetch from remote.
-  6. Write `.reviews/<type>-<issueKey>-context.md` with the issue details and commit summary.
-
+- **Glob ID** (matches `s<digits><letter><digits>`):
+  1. `get_glob(id)` and `get_context(id)`, and fetch the board knowledge (see Board knowledge).
+  2. `git fetch origin <id> <base>` and review `origin/<base>...origin/<id>`. If the branch does not exist (already merged and deleted), find the squash commit with `git log origin/<base> --grep='^<id>: '` and review that commit instead.
+  3. Write `.reviews/<id>-context.md` with the glob details, plan.md and the commit summary.
 - **Commit SHA** (hex string):
-  1. Verify the commit exists locally with `git cat-file -t <sha>`. If it doesn't exist, **stop and report the error**.
-  2. Set `type = review` and `id = <short-sha>` (first 8 chars).
-  3. Get the commit details with `git show --stat <sha>` and `git log --format="%H %s" <sha>~1..<sha>`.
-  4. Write `.reviews/review-<short-sha>-context.md` with the commit message, author, date, and files changed.
+  1. Verify it exists locally with `git cat-file -t <sha>`. If not, **stop and report the error**.
+  2. Use `id = review-<short-sha>` (first 8 chars).
+  3. Write `.reviews/<id>-context.md` from `git show --stat <sha>`. If the commit message starts with a glob ID, also fetch that glob's context. Fetch the board knowledge for the board in `.sstor/sstor.conf` (`SLOP_BOARD`).
 
-### Step 2: Code Review
+### Step 2: Code review
 
-Invoke the **change_reviewer** agent in **standalone review mode** with:
-- The issue details or commit details from the context file
-- `mode = standalone_review` — the reviewer must NOT suggest code modifications, only report findings
-- The relevant diff: `git diff <sha>~1..<sha>` for a single commit, or `git diff master..HEAD` for a branch
-- **Always** pass any docs with "conventions" in the name from `.sstor/docs/`
-- The server URL from `.sstor/.url` (if available)
+Invoke the **change_reviewer** in `standalone_review` mode with the context, the diff to review, every board doc whose audience includes the change_reviewer, the board's build doc, the base branch and the server URL if any. It writes `.reviews/<id>-review.md` and also runs the build, test, lint and dependency checks from the board's build doc.
 
-The reviewer writes findings to `.reviews/<type>-<id>.md`.
+### Step 3: Report
 
-### Step 3: Build & Quality Checks
-
-After the code review, invoke the **change_reviewer** agent again (or continue the same invocation) to run quality checks. The reviewer must run all of the following and include results in the review output:
-
-```bash
-corepack yarn workspaces foreach -Ap run build
-corepack yarn workspaces foreach -Ap run test
-corepack yarn workspaces foreach -Ap run lint
-```
-
-Also check for:
-- `corepack yarn npm audit` warnings
-- `corepack yarn install --immutable` warnings (detects out-of-sync lockfile)
-- Any modifications to `yarn.lock` on the branch (`git diff master..HEAD -- yarn.lock`)
-
-Append all results to `.reviews/<type>-<issueKey>.md`.
-
-### Step 4: Report
-
-Present a summary of the review to the user:
-- Total in-scope items and suggestions
-- Build/test/lint pass/fail
-- Any audit or lockfile warnings
-- Overall verdict: APPROVED / CHANGES_REQUIRED
+- When keyed by a glob, push the review with `put_artifact(id, kind: 'local_review', content, commitSha)`.
+- Summarise for the developer: in-scope items and suggestions, build/test/lint results, dependency warnings, and the verdict (APPROVED / CHANGES_REQUIRED).
 
 ---
 
-### Error Handling
+## Error handling
 
-If any phase fails:
-1. Log the error details.
-2. Inform the user of what failed and at which phase.
-3. Do NOT leave the task status as `Working` — the user should manually update it or restart.
+If a phase fails: log the details, call `report_failure(id, reason)` (with the run ID if unattended) when the glob cannot be finished, and tell the developer what failed and where. Slop shows the glob as failed; there is nothing else to reset.
 
-## Communication Style
+## Communication style
 
-- Report brief progress at each phase transition (e.g., "Phase 2 complete. Proceeding to implementation.").
-- At the end of the full run, summarize what was done across all phases.
-- If restarting from a phase, note which output files were read and whether any had been edited.
-- Only stop mid-workflow if there is a serious blocker — explain the problem clearly and suggest what the user should do.
+- Report brief progress at each phase transition (e.g. "Phase 2 complete. Proceeding to implementation.").
+- At the end, summarise what was done across all phases.
+- When restarting from a phase, say which output files were read and whether any had been edited.

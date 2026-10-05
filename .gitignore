@@ -1,11 +1,13 @@
-.claude/settings.local.json
-.claude/settings.json
-
 ### claude ###
+# The board's agent set is committed (slop init writes it); personal settings never are.
 .claude/*
 !.claude/commands/
 !.claude/agents/
+!.claude/hooks/
+!.claude/settings.json
+!.claude/slop-agent-set.json
 !.claude/CLAUDE.md
+.claude/settings.local.json
 
 ### codex ###
 .codex/
@@ -18,3 +20,4 @@ __pycache__/
 
 ### macOS ###
 .DS_Store
+.reviews/

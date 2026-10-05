@@ -1,0 +1,45 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "allowedDomains": [
+        "github.com"
+      ]
+    }
+  },
+  "env": {},
+  "permissions": {
+    "allow": [
+      "Bash(git push origin s*)",
+      "mcp__claude_ai_Slop__*",
+      "mcp__slop__*"
+    ],
+    "deny": [
+      "Bash(gh api:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(git push --force*)",
+      "Bash(slop call merge:*)",
+      "Bash(slop merge:*)",
+      "mcp__claude_ai_Slop__merge",
+      "mcp__slop__merge"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "slop"
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/slop_after_push.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
