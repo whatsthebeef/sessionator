@@ -6,7 +6,6 @@
 !.claude/hooks/
 !.claude/settings.json
 !.claude/slop-agent-set.json
-!.claude/CLAUDE.md
 .claude/settings.local.json
 
 ### codex ###
