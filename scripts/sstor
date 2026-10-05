@@ -57,6 +57,10 @@ checkout_init() {
   else
     status=1
   fi
+  # A failed init leaves the wrong agent set behind: with INIT_STRICT, stop before the settings merge.
+  if [[ "$status" != "0" ]] && [[ "${INIT_STRICT:-false}" == "true" ]]; then
+    return "$status"
+  fi
   python3 "$SSTOR_PY/sstor_init.py" "$SSTOR_DIR/.claude/settings.local.json" "$dir" || status=1
   return $status
 }
@@ -98,6 +102,7 @@ FINALISED=""
 REVIEW=""
 PROJECT=""
 INSTANCE=""
+FORCE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -117,6 +122,7 @@ while [[ $# -gt 0 ]]; do
     --glob=*) GLOB="${1#--glob=}" ;;
     --glob) GLOB="$2"; shift ;;
     --take-over) TAKE_OVER=true ;;
+    --force) FORCE=true ;;
     --new) NEW=true ;;
     --same|--sub|--super) NEW_TYPE="${1#--}" ;;
     --feature|--task|--bug) NEW_CATEGORY="${1#--}" ;;
@@ -157,6 +163,7 @@ Slop globs (through the slop CLI; board from SLOP_BOARD in .sstor/sstor.conf):
   --glob <id>             Pick up a glob (slop pick-up), make its worktree on its branch,
                           slop init + personal settings, launch /run-glob
   --take-over             With --glob: supersede a queued or active routine run
+  --force                 With --glob/--new: skip the check that the local base branch is pushed
   --new "<prompt>"        Create a glob through slop's intake (slop new; same by default),
      [--same|--sub|--super] [--feature|--task|--bug] [--routine]
                           then pick it up. Subs and --routine sames are left to a routine
@@ -265,10 +272,34 @@ if $DEPLOY; then
   exec "$DEPLOY_SCRIPT"
 fi
 
+# Slop creates glob branches from GitHub's base branch, so refuses (in the main checkout, never a
+# worktree) while the local base branch has commits that aren't on origin. --force skips it.
+require_base_pushed() {
+  $FORCE && return 0
+  local base="" ahead
+  base=$(git -C "$REPO_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null) || base=""
+  base="${base#origin/}"
+  if [[ -z "$base" ]]; then
+    for base in main master; do
+      git -C "$REPO_DIR" show-ref --verify --quiet "refs/remotes/origin/$base" && break
+      base=""
+    done
+  fi
+  [[ -n "$base" ]] || return 0
+  git -C "$REPO_DIR" show-ref --verify --quiet "refs/heads/$base" || return 0
+  git -C "$REPO_DIR" fetch --quiet origin "$base" || { echo "sstor: could not fetch origin/$base" >&2; return 1; }
+  ahead=$(git -C "$REPO_DIR" rev-list --count "origin/$base..refs/heads/$base") || return 1
+  if [[ "$ahead" != "0" ]]; then
+    echo "sstor: local $base has $ahead commit(s) not on origin, and slop creates glob branches from origin/$base. Push first (git -C $REPO_DIR push origin $base), or use --force" >&2
+    return 1
+  fi
+}
+
 # --new creates a glob through slop's intake; subs and --routine sames stay with a routine.
 if $NEW; then
   [[ -n "$NEW_PROMPT" ]] || { echo "Usage: sstor --new [--same|--sub|--super] [--feature|--task|--bug] [--routine] \"<prompt>\""; exit 1; }
   require_slop
+  require_base_pushed || exit 1
   NEW_ARGS=()
   [[ -n "$NEW_TYPE" ]] && NEW_ARGS+=("--$NEW_TYPE")
   [[ -n "$NEW_CATEGORY" ]] && NEW_ARGS+=("--$NEW_CATEGORY")
@@ -288,6 +319,7 @@ fi
 # --glob picks up the glob (slop waits for its branch) before anything is created locally.
 if [[ -n "$GLOB" ]]; then
   require_slop
+  $NEW || require_base_pushed || exit 1
   PICK_UP_ARGS=("$GLOB")
   $TAKE_OVER && PICK_UP_ARGS+=(--take-over)
   BRANCH=$(cd "$REPO_DIR" && slop_cli pick-up "${PICK_UP_ARGS[@]}") || exit 1
@@ -742,6 +774,8 @@ fi
 # Claude is about to (re)launch: install the agent set first, so new agents and commands
 # register. Never while Claude runs in an existing session (handled above).
 if $NEW_SETUP || [[ -n "$GLOB" ]]; then
+  INIT_STRICT=false
+  [[ -n "$GLOB" ]] && INIT_STRICT=true
   if ! checkout_init "$START_DIR"; then
     [[ -n "$GLOB" ]] && exit 1
     echo "Continuing without a fresh agent set"
