@@ -13,6 +13,7 @@
 
 ### sstor ###
 .sstor/.url
+.sstor/.finalised
 
 ### python ###
 __pycache__/
