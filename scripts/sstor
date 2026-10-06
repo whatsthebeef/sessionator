@@ -91,6 +91,7 @@ SYNC=false
 DEPLOY=false
 GLOB=""
 TAKE_OVER=false
+RESOLVE=false
 NEW=false
 NEW_TYPE=""
 NEW_CATEGORY=""
@@ -124,6 +125,7 @@ while [[ $# -gt 0 ]]; do
     --glob=*) GLOB="${1#--glob=}" ;;
     --glob) GLOB="$2"; shift ;;
     --take-over) TAKE_OVER=true ;;
+    --resolve) RESOLVE=true ;;
     --force) FORCE=true ;;
     --new) NEW=true ;;
     --same|--sub|--super) NEW_TYPE="${1#--}" ;;
@@ -170,6 +172,12 @@ Slop globs (through the slop CLI; board from SLOP_BOARD in .sstor/sstor.conf):
   --glob <id>             Pick up a glob (slop pick-up), make its worktree on its branch,
                           slop init + personal settings, launch /run-glob
   --take-over             With --glob: supersede a queued or active routine run
+  --resolve               With --glob: merge origin/<base> into the glob's branch, opening your
+                          mergetool on any conflicts, then commit (<id>: Merge <base>) and push.
+                          Uses the glob's worktree (made if missing); refuses uncommitted changes;
+                          never launches Claude or force-pushes. SSTOR_CHECKS="<cmd>" runs fast
+                          checks before the commit. If you abort the mergetool the merge stays in
+                          progress: git mergetool to continue, git merge --abort to drop it
   --env <name>            With --glob or --new: the glob's environment (one of the board's
                           environments that allow branch deploys); with --deploy: deploy there
                           instead of the glob's environment
@@ -355,7 +363,7 @@ if $NEW; then
 fi
 
 # --glob picks up the glob (slop waits for its branch) before anything is created locally.
-if [[ -n "$GLOB" ]]; then
+if [[ -n "$GLOB" ]] && ! $RESOLVE; then
   require_slop
   $NEW || require_base_pushed || exit 1
   PICK_UP_ARGS=("$GLOB")
@@ -369,7 +377,7 @@ if [[ -n "$GLOB" ]]; then
     exit 1
   fi
   INSTANCE="$GLOB"
-elif [[ -n "$REVIEW" ]]; then
+elif [[ -z "$GLOB" && -n "$REVIEW" ]]; then
   # The value is typed into the Claude window, so only a glob ID or a commit SHA gets through.
   GLOB_ID_RE='^s[1-9][0-9]*[ftbh][1-9][0-9]*$'
   SHA_RE='^[0-9a-fA-F]{7,40}$'
@@ -391,6 +399,34 @@ record_glob() {
   mkdir -p "$(dirname "$exclude")"
   grep -qxF '/.sstor/glob' "$exclude" 2>/dev/null || echo '/.sstor/glob' >> "$exclude"
 }
+
+# --glob --resolve: merge the base into the glob's branch in the developer's mergetool.
+if $RESOLVE; then
+  [[ -n "$GLOB" ]] || { echo "Usage: sstor --glob <id> --resolve" >&2; exit 2; }
+  $NEW && { echo "sstor: --resolve works on an existing glob, not with --new" >&2; exit 2; }
+  RESOLVE_ID_RE='^s[1-9][0-9]*[ftbh][1-9][0-9]*$'
+  [[ "$GLOB" =~ $RESOLVE_ID_RE ]] || { echo "sstor: '$GLOB' is not a glob ID (like s1t4)" >&2; exit 2; }
+  RESOLVE_DIR="$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${GLOB}"
+  # The base branch: SSTOR_BASE, else origin's default branch (as --checkpoint works it out).
+  RESOLVE_BASE="${SSTOR_BASE:-}"
+  if [[ -z "$RESOLVE_BASE" ]]; then
+    RESOLVE_BASE=$(git -C "$REPO_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
+    RESOLVE_BASE="${RESOLVE_BASE#origin/}"
+  fi
+  if [[ -z "$RESOLVE_BASE" ]]; then
+    for b in main master; do
+      if git -C "$REPO_DIR" rev-parse --verify --quiet "refs/remotes/origin/$b" >/dev/null; then RESOLVE_BASE="$b"; break; fi
+    done
+  fi
+  [[ -n "$RESOLVE_BASE" ]] || { echo "sstor: could not work out the base branch; set SSTOR_BASE=<branch>" >&2; exit 1; }
+  if [[ ! -d "$RESOLVE_DIR" ]]; then
+    mkdir -p "$HOME/dev/${PROJECT}__worktrees"
+    git -C "$REPO_DIR" fetch --quiet origin "$GLOB" || { echo "sstor: could not fetch origin/$GLOB" >&2; exit 1; }
+    git -C "$REPO_DIR" worktree add --track -B "$GLOB" "$RESOLVE_DIR" "origin/$GLOB" || exit 1
+    record_glob "$RESOLVE_DIR" "$GLOB"
+  fi
+  exec python3 "$SSTOR_PY/sstor_resolve.py" "$RESOLVE_DIR" "$GLOB" "$RESOLVE_BASE"
+fi
 
 # Stops at once unless the worktree is on the glob's branch and (unless /finalise already ran)
 # Claude is running in the session's claude window; says where the branch is checked out.
