@@ -162,7 +162,7 @@ Session management:
   -p, --project <name>    Target project (inferred from cwd if omitted)
   -i, --instance <name>   Target instance (worktree)
   -s, --server <cmd>      Start a server window with the given command
-                          (auto-read from .sstor/sstor.conf if present)
+                          (default: the board's local-run spec, .sstor/local-run.json)
   -k, --kill              Kill current/target session, switch to next
   -e, --end               Kill current/target session (allows last session)
   -d, --delete            Delete instance: kill session, remove worktree, delete branch
@@ -216,6 +216,13 @@ Config:
 
 Project config (.sstor/sstor.conf):
   SLOP_BOARD              The project's board in slop (read by the slop CLI)
+  (SERVER_BUILD, SERVER_CMD, PORT_BASE, SERVER_URL_TEMPLATE are deprecated: used only while
+   .sstor/local-run.json is absent, with a warning)
+
+Local run (.sstor/local-run.json, from the board's local-run spec via slop init):
+  The server window runs "<build> && <launch>" with SLOP_GLOB, SLOP_ENV, SLOP_BOARD,
+  SLOP_WORKTREE and SLOP_URL_FILE (<checkout>/.sstor/.url) set. The launch script picks its
+  own ports (sstor-port <base> prints the first free one) and writes its URL to SLOP_URL_FILE.
 
 Environment:
   SLOP_CLI                The slop CLI to run (default: slop on PATH), e.g.
@@ -855,51 +862,6 @@ else
   fi
 fi
 
-# Read project config from .sstor/sstor.conf (if no --server was passed)
-SSTOR_CONF="$REPO_DIR/.sstor/sstor.conf"
-if [[ -z "$SERVER_CMD" ]] && [[ -f "$SSTOR_CONF" ]]; then
-  _CONF_SERVER_BUILD=""
-  _CONF_SERVER_CMD=""
-  _CONF_PORT_BASE=""
-  _CONF_SERVER_URL_TEMPLATE=""
-  while IFS='=' read -r key val; do
-    val="${val%\"}" ; val="${val#\"}"  # strip quotes
-    case "$key" in
-      SERVER_BUILD) _CONF_SERVER_BUILD="$val" ;;
-      SERVER_CMD)   _CONF_SERVER_CMD="$val" ;;
-      PORT_BASE)    _CONF_PORT_BASE="$val" ;;
-      SERVER_URL_TEMPLATE) _CONF_SERVER_URL_TEMPLATE="$val" ;;
-    esac
-  done < "$SSTOR_CONF"
-
-  if [[ -n "$_CONF_SERVER_CMD" ]]; then
-    # Find a free port starting from PORT_BASE
-    if [[ -n "$_CONF_PORT_BASE" ]]; then
-      PORT="$_CONF_PORT_BASE"
-      while lsof -iTCP:"$PORT" -sTCP:LISTEN -t &>/dev/null; do
-        PORT=$((PORT + 1))
-      done
-      echo "Server port: $PORT"
-      _CONF_SERVER_CMD="${_CONF_SERVER_CMD//\{PORT\}/$PORT}"
-    fi
-
-    # Write the server URL
-    if [[ -n "$_CONF_SERVER_URL_TEMPLATE" ]] && [[ -n "$PORT" ]]; then
-      mkdir -p "$START_DIR/.sstor"
-      SERVER_URL="${_CONF_SERVER_URL_TEMPLATE//\{PORT\}/$PORT}"
-      echo "$SERVER_URL" > "$START_DIR/.sstor/.url"
-      echo "Server URL: $SERVER_URL"
-    fi
-
-    # Build the full server command
-    if [[ -n "$_CONF_SERVER_BUILD" ]]; then
-      SERVER_CMD="$_CONF_SERVER_BUILD && $_CONF_SERVER_CMD"
-    else
-      SERVER_CMD="$_CONF_SERVER_CMD"
-    fi
-  fi
-fi
-
 # Attach if outside tmux, switch-client if inside tmux.
 tmux_go() {
   local session="$1"
@@ -925,6 +887,65 @@ if $NEW_SETUP || [[ -n "$GLOB" ]]; then
   fi
 fi
 
+# The server window's command. The board's local-run spec (.sstor/local-run.json, written by
+# slop init) wins; --server is an explicit override. Returns with SERVER_CMD set, or empty.
+# sstor does no port handling: the launch script picks its ports and writes the URL for agents
+# and testers to $SLOP_URL_FILE.
+resolve_server_cmd() {
+  local dir="$1" spec build launch board envname glob_json
+
+  if [[ -n "$SERVER_CMD" ]]; then
+    return 0
+  fi
+
+  spec=$(python3 "$SSTOR_PY/sstor_local_run.py" "$dir") || return 1
+  if [[ -n "$spec" ]]; then
+    launch=$(json_field launch <<<"$spec") || return 1
+    build=$(json_field build <<<"$spec") || return 1
+    board=$(sed -n 's/^SLOP_BOARD=//p' "$dir/.sstor/sstor.conf" "$REPO_DIR/.sstor/sstor.conf" 2>/dev/null | head -n 1)
+    board="${board%\"}"; board="${board#\"}"
+    envname="$ENV_NAME"
+    if [[ -z "$envname" && -n "$GLOB" ]]; then
+      glob_json=$(slop_cli glob "$GLOB" --json) || return 1
+      envname=$(json_field environment <<<"$glob_json") || return 1
+    fi
+    mkdir -p "$dir/.sstor"
+    rm -f "$dir/.sstor/.url"   # a stale URL from an earlier run would mislead agents
+    SERVER_CMD=$(printf 'export SLOP_GLOB=%q SLOP_ENV=%q SLOP_BOARD=%q SLOP_WORKTREE=%q SLOP_URL_FILE=%q; ' \
+      "$GLOB" "$envname" "$board" "$dir" "$dir/.sstor/.url")
+    SERVER_CMD+="${build:+$build && }$launch"
+    return 0
+  fi
+
+  # Deprecated for one release: the server keys in .sstor/sstor.conf.
+  local conf="$REPO_DIR/.sstor/sstor.conf" key val sbuild="" scmd="" pbase="" utpl="" port=""
+  [[ -f "$conf" ]] || return 0
+  while IFS='=' read -r key val; do
+    val="${val%\"}" ; val="${val#\"}"
+    case "$key" in
+      SERVER_BUILD) sbuild="$val" ;;
+      SERVER_CMD) scmd="$val" ;;
+      PORT_BASE) pbase="$val" ;;
+      SERVER_URL_TEMPLATE) utpl="$val" ;;
+    esac
+  done < "$conf"
+  [[ -n "$scmd" ]] || return 0
+  echo "sstor: SERVER_BUILD/SERVER_CMD/PORT_BASE/SERVER_URL_TEMPLATE in .sstor/sstor.conf are deprecated; use the board's local-run spec (.sstor/local-run.json)" >&2
+  if [[ -n "$pbase" ]]; then
+    port="$pbase"
+    while lsof -iTCP:"$port" -sTCP:LISTEN -t &>/dev/null; do port=$((port + 1)); done
+    echo "Server port: $port"
+    scmd="${scmd//\{PORT\}/$port}"
+  fi
+  if [[ -n "$utpl" && -n "$port" ]]; then
+    mkdir -p "$dir/.sstor"
+    echo "${utpl//\{PORT\}/$port}" > "$dir/.sstor/.url"
+  fi
+  SERVER_CMD="${sbuild:+$sbuild && }$scmd"
+}
+
+resolve_server_cmd "$START_DIR" || exit 1
+
 WINDOW=1
 
 # Window 1: claude
@@ -946,7 +967,6 @@ WINDOW=$((WINDOW + 1))
 tmux new-window  -t "$SESSION":$WINDOW -n editor -c "$START_DIR"
 tmux send-keys   -t "$SESSION":$WINDOW "nvim -c 'Git | only'" C-m
 
-# Window 4: server (optional)
 # Window 4: server (optional)
 if [[ -n "$SERVER_CMD" ]]; then
   WINDOW=$((WINDOW + 1))

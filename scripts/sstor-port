@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# sstor-port <base>: print the first free TCP port from <base> upwards.
+# For a board's launch script: sstor does no port handling itself.
+set -euo pipefail
+base="${1:-}"
+[[ "$base" =~ ^[0-9]+$ ]] || { echo "sstor-port: usage: sstor-port <base-port>" >&2; exit 2; }
+port="$base"
+while lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1; do
+  port=$((port + 1))
+  (( port <= 65535 )) || { echo "sstor-port: no free port from $base" >&2; exit 1; }
+done
+echo "$port"
