@@ -32,4 +32,12 @@ Dotfiles and the `sstor` script, which runs one tmux session and git worktree pe
   It never launches Claude or a routine and never force-pushes. Tests:
   `python3 -m unittest scripts/test_sstor_resolve.py`.
 
+- **Local servers.** The board's local-run spec (`{ "build"?, "launch" }`, board data in slop) reaches
+  the checkout as `.sstor/local-run.json` through `slop init`. A new session's server window runs
+  `build && launch` with `SLOP_GLOB`, `SLOP_ENV`, `SLOP_BOARD`, `SLOP_WORKTREE` and `SLOP_URL_FILE`
+  set. sstor does no port handling: the launch script picks its ports (`scripts/sstor-port <base>`
+  prints the first free one) and writes its URL to `$SLOP_URL_FILE` (`.sstor/.url`). The old
+  `SERVER_BUILD`/`SERVER_CMD`/`PORT_BASE`/`SERVER_URL_TEMPLATE` keys in `.sstor/sstor.conf` still work
+  for one release, with a deprecation warning, only when `.sstor/local-run.json` is absent.
+
 Run `sstor --help` for every option.
