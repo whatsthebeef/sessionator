@@ -147,7 +147,7 @@ hs.hotkey.bind({"alt"}, "E", function()
 end)
 
 hs.hotkey.bind({"alt"}, "M", function()
-  focusChromeTab("mail.google.com", "https://mail.google.com/mail/u/0/#inbox")
+  focusChromeTab("localhost:5173", "http://localhost:5173")
 end)
 
 hs.hotkey.bind({"alt"}, "P", function()
