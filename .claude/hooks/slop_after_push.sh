@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PostToolUse hook (Bash): after a git push, remind Claude to update the postplan.
+# PostToolUse hook (Bash): after a git push, remind Claude to update the implementation record.
 # Best effort only; sstor --ready and --derge guarantee it through /finalise.
 input=$(cat)
 command=$(printf '%s' "$input" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input", {}).get("command", ""))' 2>/dev/null)
@@ -8,5 +8,5 @@ command=$(printf '%s' "$input" | python3 -c 'import json,sys; print(json.load(sy
 printf '%s' "$command" | python3 -c 'import re,sys; sys.exit(0 if re.search(r"(^|&&|;|\|\|)\s*git\s+push\b", sys.stdin.read(), re.M) else 1)' || exit 0
 
 cat <<'EOF'
-{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"You just pushed. If this glob is a super, update .reviews/<id>-postplan.md and send it with put_artifact (kind: postplan, commitSha: the pushed HEAD)."}}
+{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"You just pushed. If this glob is a super, update .reviews/<id>-record.md (the implementation record) and send it with put_artifact (kind: implementation_plan, commitSha: the pushed HEAD), then report the push's deploy state from get_glob's deploys if the glob has an environment."}}
 EOF
