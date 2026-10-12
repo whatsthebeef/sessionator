@@ -1,0 +1,16 @@
+#!/bin/bash
+case "$1" in
+  set)
+    target=$(tmux display-message -p "#{session_name}:#{window_index}")
+    tmux set-environment -g "TMUX_MARK_$2" "$target"
+    tmux display-message "Mark $2 set → $target"
+    ;;
+  goto)
+    target=$(tmux show-environment -g "TMUX_MARK_$2" 2>/dev/null | cut -d= -f2)
+    if [ -n "$target" ]; then
+      tmux switch-client -t "$target"
+    else
+      tmux display-message "Mark $2 not set"
+    fi
+    ;;
+esac
