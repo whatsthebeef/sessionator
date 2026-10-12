@@ -20,6 +20,7 @@ Work on a slop glob, or review existing changes.
 - `<id>` — the glob ID (e.g. `s1t4`). Its category (feature, task, bug) and slop type (sub, same, super) come from slop; there are no separate task and bug flags.
 - `--from <phase>` — resume from phase 1–6. Default is 1.
 - `--run <runId>` — run **unattended** as a routine run. Routines always pass this; developers never do.
+- An unattended run whose fire text says **INVESTIGATE-ONLY** is on a glob still in Planning (no branch): it follows the orchestrator's "Investigate-only runs" section and stops after pushing the investigation.
 - `--review <id|sha>` — review only, no code changes. With a glob ID the result is pushed to slop as the glob's local review.
 
 ### Examples
@@ -47,11 +48,11 @@ Work on a slop glob, or review existing changes.
 | Phase | What happens | Output file |
 |-------|-------------|-------------|
 | 1 | Fetch the glob's context from slop, clarify | `.reviews/<id>-context.md` |
-| 2 | Investigate, choose a proposal, push the implementation plan | `.reviews/<id>-plan.md` |
+| 2 | Investigate, choose a proposal, start and push the implementation record | `.reviews/<id>-plan.md`, `.reviews/<id>-record.md` |
 | 3 | Implement | `.reviews/<id>-implementation.md` |
 | 4 | Write and run tests | `.reviews/<id>-tests.md` |
 | 5 | Review cycle | `.reviews/<id>-review.md` |
-| 6 | Commit, push the local review and learnings, push the branch, mark the PR ready | — |
+| 6 | Complete the record, commit, push the record, local review and learnings, push the branch, mark the PR ready | — |
 
 ### Restarting from a phase
 

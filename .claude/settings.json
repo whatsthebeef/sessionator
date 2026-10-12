@@ -12,6 +12,9 @@
   "permissions": {
     "allow": [
       "Bash(git push origin s*)",
+      "Bash(slop put-artifact:*)",
+      "mcp__claude-code-remote__subscribe_pr_activity",
+      "mcp__claude-code-remote__unsubscribe_pr_activity",
       "mcp__claude_ai_Slop__*",
       "mcp__slop__*"
     ],
@@ -20,6 +23,7 @@
       "Bash(gh pr create:*)",
       "Bash(gh pr merge:*)",
       "Bash(git push --force*)",
+      "Bash(slop api:*)",
       "Bash(slop call merge:*)",
       "Bash(slop merge:*)",
       "mcp__claude_ai_Slop__merge",
