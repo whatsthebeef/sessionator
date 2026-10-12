@@ -150,6 +150,10 @@ hs.hotkey.bind({"alt"}, "M", function()
   focusChromeTab("localhost:5173", "http://localhost:5173")
 end)
 
+hs.hotkey.bind({"alt"}, "X", function()
+  focusChromeTab("slopmux.thepocketlab.com", "https://slopmux.thepocketlab.com")
+end)
+
 hs.hotkey.bind({"alt"}, "P", function()
   focusChromeTab("app-int.thepocketlab.com", "https://app-int.thepocketlab.com")
 end)
