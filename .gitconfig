@@ -20,3 +20,5 @@
 	layout = LOCAL,BASE,REMOTE / MERGED
 [grep]
 	excludesFile = /Users/john/.gitgrepignore
+[pull]
+	rebase = false

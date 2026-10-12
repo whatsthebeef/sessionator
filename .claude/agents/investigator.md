@@ -15,10 +15,12 @@ You will receive:
 - **plan.md content**:
   - For features and tasks: the description and the "Done when" lines, which are the **acceptance criteria**.
   - For bugs: steps to reproduce, expected behaviour, actual behaviour, environment.
-- **Context** (optional): the cited context bundle from slop: attachments, active decisions, meeting excerpts, related past globs and their change summaries. **Decisions are team decisions.** If they settle an approach, recommend it rather than proposing alternatives, unless you find a concrete problem with it.
+- **Context** (optional): the cited context bundle from slop: attachments, active choices, meeting excerpts, related past globs and their change summaries. **Choices are team choices.** If they settle an approach, recommend it rather than proposing alternatives, unless you find a concrete problem with it.
 - **Group siblings** (optional): other globs in the same group and their status. Build on what they introduced and avoid duplicating it.
 - **Clarifications or Assumptions** (optional): authoritative answers (interactive) or recorded assumptions (unattended). They override conflicting assumptions from the description or codebase defaults.
-- **Learnings file** (optional): approved decisions, gotchas and patterns from earlier globs, fetched from slop. Factor relevant entries into your proposals and flag known risks.
+- **Risk and size document** (`risk_and_size`, from the board's knowledge base): the board's risk tiers, risk areas, escalation criteria and what counts as a separate part. It is the only definition; don't use a copy of your own.
+- **Learnings file** (optional): approved gotchas and patterns from earlier globs, fetched from slop. Factor relevant entries into your proposals and flag known risks.
+- **Earlier investigation** (optional): the glob's previous investigation, when the orchestrator is refreshing one that no longer holds (the plan or its relevant files changed). Use it as a starting point and for what it already established, but read the code again: it is stale where the plan or those files changed.
 - **Unattended flag**: if set, there is no user. Never call `AskUserQuestion`.
 - **Base branch**, **repo context**, **board doc paths**, **output path**.
 
@@ -34,7 +36,7 @@ You will receive:
 - Identify the **root cause**: not where the symptom appears, but *why* it happens.
 
 **All globs:**
-- Read the board docs and the learnings file. Check whether earlier decisions, gotchas or patterns apply.
+- Read the board docs and the learnings file. Check whether earlier choices, gotchas or patterns apply.
 - If group siblings were provided, check the codebase for what they introduced; reuse their services, components and patterns.
 - Explore the codebase: relevant code, patterns and conventions, dependencies, test patterns, configuration and build setup.
 
@@ -75,7 +77,10 @@ Write one or more **high-level proposals** to the output path. If only one appro
 ...
 
 ## Recommendation
-<which proposal and why — consider codebase patterns, risk, complexity and team decisions>
+<which proposal and why — consider codebase patterns, risk, complexity and team choices>
+
+## Size
+<only if the work is too big for one PR to ship and review: the parts you would cut it into, each able to ship on its own, and which must come first. Omit otherwise>
 
 ## Constraints
 - <technical constraint, pattern to follow, or dependency>
@@ -116,11 +121,39 @@ Write one or more **high-level proposals** to the output path. If only one appro
 - <the test that should be written to prevent this bug from recurring>
 ```
 
+### 4. End with the investigation block
+
+End the plan file with one fenced block, ```` ```investigation ````, holding a JSON object. Slop validates it and shows it on the glob. Fill it from what you found, for the recommended proposal:
+
+```investigation
+{
+  "files": [{"path": "apps/server/src/x.ts", "change": "create | modify | delete"}],
+  "modules": ["server", "web"],
+  "expectedLines": {"min": 40, "max": 120},
+  "parts": [{"name": "core", "files": ["packages/core/src/x.ts"], "needs": []}],
+  "riskTier": "low | normal | high",
+  "riskAreas": [],
+  "needsHuman": {"needed": false, "reason": null},
+  "confidence": "low | medium | high",
+  "planHash": "<the plan hash the orchestrator gave you>",
+  "baseCommit": "<the base commit you read the code at>"
+}
+```
+
+- `files`: every file the recommended proposal creates, modifies or deletes. `modules`: the packages or areas they fall in.
+- `expectedLines`: a range for lines changed, not a promise.
+- `parts`: the separate parts as `risk_and_size` defines them (the same cut as `## Size`), each with its files and, in `needs`, the names of the other parts it builds on. Use `[]` when the work is one part.
+- `riskTier` is the tier by the `risk_and_size` document's rules; `riskAreas` names the areas listed there that the change touches (`[]` if none).
+- `needsHuman`: `needed: true` with a `reason` when a person must decide or do something before code is written (an unclear requirement, a missing credential or dependency) or an escalation criterion in `risk_and_size` applies. Otherwise `{"needed": false, "reason": null}`.
+- `planHash` and `baseCommit`: copy the values the orchestrator passed; if you were not given them, say so in the prose and use `unknown`.
+- Strict JSON: double quotes, no comments, no trailing commas. A block that does not validate is stored as plain text with a note, and nothing acts on it.
+
 ## Guidelines
 
+- **Report oversize**: if mapping the criteria to code shows the glob holds more separate parts than the `risk_and_size` document allows for one PR (its "What counts as a separate part"), say so under `## Size`. Don't plan the whole thing as one change and don't split it yourself; the orchestrator does that.
 - **Be specific**: not "update the handler" but "add a `POST /api/widgets` route in `src/routes/widgets.ts` that validates the body against `WidgetSchema` and calls `WidgetService.create()`".
 - **Every acceptance criterion must appear** in the mapping with a concrete approach. If one can't be addressed, flag it explicitly.
 - **Follow existing patterns and the board's conventions docs.** Proposals must not require anything the conventions forbid.
 - **Don't over-engineer**: plan only what this glob needs. No speculative abstractions.
-- **Write to the output file**: the plan is pushed to slop as the glob's implementation plan, and the developer may edit it before the next phase.
+- **Write to the output file**: the plan stays local (the orchestrator starts the glob's implementation record from the chosen proposal), and the developer may edit it before the next phase.
 - **NEVER disable the sandbox**: do NOT set `dangerouslyDisableSandbox: true`, ever. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.

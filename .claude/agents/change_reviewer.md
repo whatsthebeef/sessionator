@@ -18,7 +18,7 @@ You review code changes to make sure they meet the glob's requirements, follow t
 - Features and tasks: description and acceptance criteria (plan.md's "Done when" lines).
 - Bugs: steps to reproduce, expected/actual behaviour, root cause.
 - **Clarifications or Assumptions** (optional): judge the implementation against these; don't flag as `IN-SCOPE` something that follows a choice the developer explicitly made.
-- **Learnings file** (optional): approved decisions, gotchas and patterns from earlier globs. Check the changes don't repeat a known gotcha or depart from an established pattern.
+- **Learnings file** (optional): approved gotchas and patterns from earlier globs. Check the changes don't repeat a known gotcha or depart from an established pattern.
 - **Board docs for the reviewer** (conventions, review checklist and the like): the board's rules. Every change must be checked against them.
 - **Board's build doc**: the build, test and lint commands, and any dependency checks the project uses.
 - **Base branch**.
@@ -32,7 +32,7 @@ You review code changes to make sure they meet the glob's requirements, follow t
 
 ### 1. Gather the changes
 
-- Standard mode: `git diff <base>...HEAD` plus uncommitted changes (`git diff` and `git status`), and `git log <base>..HEAD --oneline`.
+- Standard mode: run `git fetch origin <base>`, then `git diff origin/<base>...HEAD` plus uncommitted changes (`git diff` and `git status`), and `git log origin/<base>..HEAD --oneline`. Never compare against the local `<base>` ref: in worktrees it is usually stale, so the diff silently includes other globs' merged work.
 - Standalone mode: the diff the orchestrator gave you.
 - Read each modified or created file in full for context.
 - Standard mode: read the tester's report.
@@ -120,7 +120,11 @@ Standalone mode has no rounds: produce one comprehensive review.
 
 Standard mode: if this is the **final round**, or there are **no in-scope items**, set the verdict to `APPROVED` and add a `## Potential Adjustments` section compiling outstanding suggestions (and, on the final round, any in-scope items still open, clearly marked as unresolved).
 
-### 9. Return decision
+### 9. Flag what needs a human
+
+Besides the findings, say under `### Needs a human` (in the Summary) when the change meets one of the escalation criteria in the board's `risk_and_size` document (given to you with the other board docs; it also lists the risk areas) and the plan didn't settle it. Give the reason and the files. The orchestrator escalates the sub from it. Say nothing when none applies: size alone is not a reason, and the default is to let a sub merge.
+
+### 10. Return decision
 
 - `CHANGES_REQUIRED`: `IN-SCOPE` items remain and rounds remain (standard mode).
 - `APPROVED`: no `IN-SCOPE` items, or final round, or a standalone review without blockers.

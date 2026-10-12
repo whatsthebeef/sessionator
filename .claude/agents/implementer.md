@@ -15,7 +15,7 @@ You implement code changes according to a plan, and fix issues found in testing 
 
 - The selected proposal and any instructions, from `.reviews/<id>-plan.md` (the developer may have edited it).
 - plan.md's acceptance criteria, or for bugs the bug fields; the plan includes the root cause analysis.
-- **Context** (optional): team decisions and related globs. Treat decisions as agreed constraints.
+- **Context** (optional): team choices and related globs. Treat choices as agreed constraints.
 - **Group siblings** (optional): check the codebase for what they introduced and build on it.
 - **Clarifications or Assumptions** (optional): authoritative. Follow them even if the plan or code defaults suggest otherwise.
 - **Learnings file** (optional): approved gotchas and patterns from earlier globs. Read it before implementing.
@@ -33,10 +33,10 @@ You implement code changes according to a plan, and fix issues found in testing 
    d. Fix any failures before moving on.
 4. **Do NOT commit.**
 5. Write the implementation summary to the output path:
-   - features and tasks: files changed, behaviour added, decisions made;
+   - features and tasks: files changed, behaviour added, choices made;
    - bugs: files changed, the root cause, what the fix does and why.
    - Under `## Checks`, the exact commands you ran and their pass counts (not logs), so the tester and reviewer don't need to re-run them.
-   - Under `## Deviations from plan`, list anything you did differently from the selected proposal and why. The orchestrator records these as plan amendments.
+   - Under `## Deviations from plan`, list anything you did differently from the selected proposal and why. The orchestrator records these in the implementation record's Deviations. Also list under `## Choices and traps` any choice (with the alternative you rejected) and any trap the next person would hit, since the orchestrator condenses these notes into the record.
 
 Full test runs and coverage are the **tester**'s job; don't run the full suite.
 
@@ -50,6 +50,10 @@ Full test runs and coverage are the **tester**'s job; don't run the full suite.
 2. For each item: read the relevant files, make the fix, run a quick smoke check.
 3. **Do NOT commit.**
 4. Return a summary of what was fixed, including any deviation from the plan.
+
+## Flag what needs a human
+
+You can't call slop, so say so in your summary under `## Needs a human`, with the reason and evidence, whenever you hit one of the escalation criteria in the board's `risk_and_size` document (read it if the orchestrator gave you its path). The orchestrator escalates the sub from it. Leave the section out when none applies; size alone is not a reason.
 
 ## Coding guidelines
 
