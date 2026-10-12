@@ -106,9 +106,11 @@ REVIEW=""
 PROJECT=""
 INSTANCE=""
 FORCE=false
+NO_SLOP=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --no-slop) NO_SLOP=true ;;
     --server=*) SERVER_CMD="${1#--server=}" ;;
     -s|--server) SERVER_CMD="$2"; shift ;;
     --project=*) PROJECT="${1#--project=}" ;;
@@ -212,6 +214,7 @@ Slop:
 
 Config:
   --sync                  Re-run init (slop init + personal settings) in project/instance
+  --no-slop               Skip all slop integration (auto-detected when no SLOP_BOARD or slop CLI)
   -r, --reload            Reload bash profile and tmux config
 
 Project config (.sstor/sstor.conf):
@@ -266,6 +269,22 @@ if [[ ! -d "$REPO_DIR" ]]; then
   exit 1
 fi
 
+# Auto-detect: no slop when there's no SLOP_BOARD configured
+if ! $NO_SLOP; then
+  SLOP_BOARD=""
+  for conf in "$REPO_DIR/.sstor/sstor.conf" "$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${INSTANCE:-_}/.sstor/sstor.conf"; do
+    [[ -f "$conf" ]] && SLOP_BOARD=$(sed -n 's/^SLOP_BOARD=//p' "$conf" | head -1) && break
+  done
+  SLOP_BOARD="${SLOP_BOARD%\"}"; SLOP_BOARD="${SLOP_BOARD#\"}"
+  if [[ -z "$SLOP_BOARD" ]] || ! slop_runnable 2>/dev/null; then
+    NO_SLOP=true
+  fi
+fi
+
+if $NO_SLOP; then
+  require_slop() { echo "sstor: slop is disabled (--no-slop or no SLOP_BOARD); $1 requires slop" >&2; return 1; }
+fi
+
 # Sync Claude config into an existing project/instance
 if $SYNC; then
   if [[ -n "$INSTANCE" ]]; then
@@ -277,7 +296,11 @@ if $SYNC; then
     echo "Directory not found: $SYNC_TARGET"
     exit 1
   fi
-  checkout_init "$SYNC_TARGET"
+  if $NO_SLOP; then
+    python3 "$SSTOR_PY/sstor_init.py" "$SSTOR_DIR/.claude/settings.local.json" "$SYNC_TARGET"
+  else
+    checkout_init "$SYNC_TARGET"
+  fi
   exit $?
 fi
 
@@ -348,6 +371,10 @@ require_base_pushed() {
 }
 
 # --new creates a glob through slop's intake; subs and --routine sames stay with a routine.
+if $NEW && $NO_SLOP; then
+  echo "sstor: --new requires slop (remove --no-slop or configure SLOP_BOARD in .sstor/sstor.conf)" >&2
+  exit 1
+fi
 if $NEW; then
   [[ -n "$NEW_PROMPT" ]] || { echo "Usage: sstor --new [--same|--sub|--super] [--feature|--task|--bug] [--routine] [--env <name>] \"<prompt>\""; exit 1; }
   require_slop
@@ -370,6 +397,10 @@ if $NEW; then
 fi
 
 # --glob picks up the glob (slop waits for its branch) before anything is created locally.
+if [[ -n "$GLOB" ]] && $NO_SLOP; then
+  echo "sstor: --glob requires slop (remove --no-slop or configure SLOP_BOARD in .sstor/sstor.conf)" >&2
+  exit 1
+fi
 if [[ -n "$GLOB" ]] && ! $RESOLVE; then
   require_slop
   $NEW || require_base_pushed || exit 1
@@ -483,6 +514,12 @@ require_pushed() {
     return 1
   fi
 }
+
+# --ready, --checkpoint, --merge, --derge all require slop.
+if $NO_SLOP && ($READY || $CHECKPOINT || $MERGE || $DERGE); then
+  echo "sstor: --ready/--checkpoint/--merge/--derge require slop" >&2
+  exit 1
+fi
 
 # --ready: finalise, then slop ready (push, mark the glob's PR ready for review).
 if $READY; then
@@ -878,7 +915,11 @@ fi
 
 # Claude is about to (re)launch: install the agent set first, so new agents and commands
 # register. Never while Claude runs in an existing session (handled above).
-if $NEW_SETUP || [[ -n "$GLOB" ]]; then
+if $NO_SLOP; then
+  if $NEW_SETUP; then
+    python3 "$SSTOR_PY/sstor_init.py" "$SSTOR_DIR/.claude/settings.local.json" "$START_DIR" 2>/dev/null || true
+  fi
+elif $NEW_SETUP || [[ -n "$GLOB" ]]; then
   INIT_STRICT=false
   [[ -n "$GLOB" ]] && INIT_STRICT=true
   if ! checkout_init "$START_DIR"; then
@@ -950,7 +991,9 @@ WINDOW=1
 
 # Window 1: claude
 tmux new-session -d -s "$SESSION" -c "$START_DIR" -n claude
-if [[ -n "$GLOB" ]]; then
+if $NO_SLOP; then
+  tmux send-keys -t "$SESSION":$WINDOW 'claude --continue' C-m
+elif [[ -n "$GLOB" ]]; then
   tmux send-keys -t "$SESSION":$WINDOW "claude '/run-glob $GLOB'" C-m
 elif [[ -n "$REVIEW" ]]; then
   tmux send-keys -t "$SESSION":$WINDOW "claude '/run-glob --review $REVIEW'" C-m
