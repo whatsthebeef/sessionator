@@ -101,6 +101,7 @@ ENV_NAME=""
 READY=false
 CHECKPOINT=false
 DONE=false
+TIDY=false
 FINALISED=""
 REVIEW=""
 PROJECT=""
@@ -138,6 +139,7 @@ while [[ $# -gt 0 ]]; do
     --ready) READY=true ;;
     --checkpoint) CHECKPOINT=true ;;
     --done) DONE=true ;;
+    --tidy) TIDY=true ;;
     --finalised=*) FINALISED="${1#--finalised=}" ;;
     --finalised) FINALISED="$2"; shift ;;
     --review=*) REVIEW="${1#--review=}" ;;
@@ -192,6 +194,11 @@ Slop globs (through the slop CLI; board from SLOP_BOARD in .sstor/sstor.conf):
   -m, --merge             /finalise in Claude, then slop merge (like the glob's Merge button)
   -g, --derge             --merge, wait for slop to finish merging, then delete the instance
   --done                  Delete the instance of a glob merged elsewhere
+  --tidy                  Remove the worktrees, branches and tmux sessions of globs that are merged,
+                          signed off or deleted on the board, prune stale worktree records and
+                          fetch --prune. Keeps (and lists, with the reason) any worktree with
+                          uncommitted or unpushed work. Also runs when a session is created or
+                          attached; SSTOR_NO_TIDY=1 turns that off
   --finalised <id>        With --ready/--checkpoint/--merge/--derge: /finalise <id> already ran
                           in Claude
 
@@ -646,6 +653,118 @@ if $LIST; then
   exit 0
 fi
 
+# Statuses slop gives a glob that is finished: merged (reviewing), signed off or deleted.
+glob_finished() {
+  case "$1" in
+    reviewing|signed_off|merged|done|deleted) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Prints a glob's status in slop, or nothing when slop can't say.
+glob_status() {
+  local out
+  out=$(cd "$REPO_DIR" && slop_cli glob "$1" --json 2>/dev/null) || return 0
+  json_field status <<<"$out" 2>/dev/null || true
+}
+
+# Why a finished glob's worktree must stay (uncommitted or unpushed work); empty when it is safe to remove.
+worktree_keep_reason() {
+  local dir="$1" id="$2" ahead
+  if [[ -n "$(git -C "$dir" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    echo "uncommitted changes"
+    return 0
+  fi
+  # Once merged, origin may have deleted the branch; then only a branch still on origin can be checked.
+  if git -C "$dir" rev-parse --verify --quiet "refs/remotes/origin/$id" >/dev/null; then
+    ahead=$(git -C "$dir" rev-list --count "origin/$id..HEAD" 2>/dev/null || echo 1)
+    if [[ "$ahead" != "0" ]]; then
+      echo "$ahead commit(s) not on origin/$id"
+    fi
+  fi
+}
+
+# --tidy: remove what finished globs left behind in this project. $1 = "quiet" prints only actions;
+# $2 = an instance to leave alone (the one being opened).
+tidy_project() {
+  local quiet="${1:-}" skip="${2:-}" wt_dir="$HOME/dev/${PROJECT}__worktrees"
+  local id_re='^s[1-9][0-9]*[ftbh][1-9][0-9]*$'
+  local dir id session status reason branch current
+
+  slop_runnable 2>/dev/null || { [[ -n "$quiet" ]] || echo "sstor: tidy needs the slop CLI; skipped" >&2; return 0; }
+  [[ -z "$quiet" ]] && echo "sstor: tidying $PROJECT"
+
+  git -C "$REPO_DIR" fetch --quiet origin 2>/dev/null || echo "sstor: could not fetch origin; unpushed checks use what is local" >&2
+  git -C "$REPO_DIR" worktree prune
+
+  if [[ -d "$wt_dir" ]]; then
+    for dir in "$wt_dir"/"${PROJECT}"-*/; do
+      [[ -d "$dir" ]] || continue
+      dir="${dir%/}"
+      id="${dir##*/}"; id="${id#"${PROJECT}"-}"
+      [[ "$id" =~ $id_re ]] || continue
+      [[ "$id" == "$skip" ]] && continue
+      session="${PROJECT}-${id}"
+      status=$(glob_status "$id")
+      if [[ -z "$status" ]]; then
+        [[ -n "$quiet" ]] || echo "Kept $dir: could not read $id's status from slop"
+        continue
+      fi
+      if ! glob_finished "$status"; then
+        [[ -n "$quiet" ]] || echo "Kept $dir: $id is $status"
+        continue
+      fi
+      reason=$(worktree_keep_reason "$dir" "$id")
+      if [[ -n "$reason" ]]; then
+        echo "Kept $dir: $id is $status but has $reason"
+        continue
+      fi
+      if tmux has-session -t "=$session" 2>/dev/null; then
+        if [[ -n "${TMUX:-}" ]] && [[ "$(tmux display-message -p '#S')" == "$session" ]]; then
+          echo "Kept $dir: $id is $status but this is its session; run sstor -i $id --done"
+          continue
+        fi
+        cleanup_server "$dir"
+        tmux kill-session -t "=$session" && echo "Killed session: $session"
+      fi
+      if git -C "$REPO_DIR" worktree remove --force "$dir"; then
+        echo "Removed worktree: $dir ($id is $status)"
+        if git -C "$REPO_DIR" rev-parse --verify --quiet "refs/heads/$id" >/dev/null; then
+          git -C "$REPO_DIR" branch -D "$id" >/dev/null && echo "Deleted branch: $id"
+        fi
+      else
+        echo "Kept $dir: git could not remove it"
+      fi
+    done
+  fi
+
+  # Local branches of finished globs that have no worktree.
+  current=$(git -C "$REPO_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+  while IFS= read -r branch; do
+    [[ "$branch" =~ $id_re ]] || continue
+    [[ "$branch" == "$skip" || "$branch" == "$current" ]] && continue
+    # Still checked out in a worktree (kept above): leave it.
+    git -C "$REPO_DIR" worktree list --porcelain | grep -qxF "branch refs/heads/$branch" && continue
+    status=$(glob_status "$branch")
+    if [[ -n "$status" ]] && glob_finished "$status"; then
+      if git -C "$REPO_DIR" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null \
+        && [[ "$(git -C "$REPO_DIR" rev-list --count "origin/$branch..refs/heads/$branch")" != "0" ]]; then
+        echo "Kept branch $branch: $status but has commits not on origin/$branch"
+        continue
+      fi
+      git -C "$REPO_DIR" branch -D "$branch" >/dev/null && echo "Deleted branch: $branch ($status)"
+    fi
+  done < <(git -C "$REPO_DIR" for-each-ref --format='%(refname:short)' refs/heads/)
+
+  git -C "$REPO_DIR" fetch --prune --quiet origin 2>/dev/null || true
+}
+
+# --tidy: clean up after finished globs.
+if $TIDY; then
+  tidy_project
+  exit 0
+fi
+
 # Merge the glob through slop (--merge/--derge), then clean up (--derge/--done).
 if $MERGE || $DERGE || $DONE; then
   if [[ -z "$INSTANCE" ]] && [[ "$(pwd)" == *__worktrees/* ]]; then
@@ -827,6 +946,11 @@ if $DELETE; then
   fi
 
   exit 0
+fi
+
+# Starting a session also tidies what finished globs left behind (best effort, never blocks).
+if [[ "${SSTOR_NO_TIDY:-}" != "1" ]]; then
+  (tidy_project quiet "$INSTANCE") || true
 fi
 
 # Create/attach session
