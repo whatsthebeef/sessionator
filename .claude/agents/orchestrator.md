@@ -45,11 +45,16 @@ When a run ID is given:
 - If the fire text says **INVESTIGATE-ONLY**, follow **Investigate-only runs** instead of the rest of this section and of the Workflow: no agent-set check, no branch checkout, no commits.
 - Do **not** call `pick_up`: routines never record a human implementer.
 - Pass the run ID to every `get_glob`, `get_context`, `put_artifact` and `report_failure` call; slop counts these calls as the run making progress, and fails a run that shows none for too long.
+- **Keep progress moving.** Slop marks a run stalled when its last progress (`lastProgressAt`) is older than the board's threshold for that kind of run (implementing about 45 minutes, queued 20, provisioning 10). Only slop calls made with your run ID advance it. During a long phase (an implementer, tester or change_reviewer sub-agent running, a full check suite), call `get_glob(id, runId)` at least every 10 minutes and again right after each sub-agent returns, so a healthy run is never read as stuck. Don't poll in a tight loop: one call per interval is enough. If `lastProgressAt` in the reply hasn't advanced after your call, the run is no longer current: stop as in the pre-push check.
 - Every commit carries the trailer `Slop-Run: <runId>`.
 - **Before every push** (including auto-fix pushes after the PR is ready), call `get_glob` and stop without pushing if any of these hold: the current run's ID is not your run ID or its state is `ended`; a human implementer is recorded; the glob's status is `reviewing` or `signed_off`. Report nothing further in that case; the run has been superseded.
 - **Branch:** a routine's checkout starts on the default branch, not the glob's. Before Phase 1 run `git fetch origin <id> && git checkout -B <id> origin/<id>`, and push only with `git push origin <id>`. Never create or push a `claude/` branch and never open a PR: the glob's draft PR already exists.
 - **A red base branch is not yours to fix.** When the PR's checks fail (auto-fix), call `get_glob` first. If `headChecks.inheritedFrom` is set (or `failedChecks.inherited` is true), the base branch fails the same way: do not patch its error in this branch (a second fix collides with the one the base's owner pushes). Do not push. Record it in the run's notes (an `Assumptions` attachment): the failing check and first error, and that it is inherited from the base since the glob named in `inheritedFrom.since`. Slop brings the branch up to date and re-runs the checks when the base goes green. If the checks still fail afterwards with `inheritedFrom` unset, the failure is this glob's: fix it.
 - Pick the investigator's recommended proposal.
+
+## Handover
+
+`get_glob` and `get_context` return `handover`: why a person is needed on this glob (`why`, one sentence per cause, most actionable first), what to do first (`next`) and the extra lines (`detail`); it is null when nothing is wrong. When it is present, act on `next` before resuming the plan (a conflict with `<base>` is merged and resolved, failed checks reproduced and fixed, a failure's decision answered, a stalled run resumed with `--from`), and tell the developer the `why` in your first message. Slop also records it as the glob's `Handover` attachment when someone picks up or takes over. `slop handover <id>` prints it.
 
 ## Interactive start
 
