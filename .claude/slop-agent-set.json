@@ -1,6 +1,6 @@
 {
   "board": 16,
-  "version": 30,
+  "version": 32,
   "files": [
     ".claude/agents/change_reviewer.md",
     ".claude/agents/implementer.md",
@@ -12,5 +12,5 @@
     ".claude/commands/run-glob.md",
     ".claude/hooks/slop_after_push.sh"
   ],
-  "fetchedAt": "2026-10-13T16:27:35Z"
+  "fetchedAt": "2026-10-13T16:56:55Z"
 }
