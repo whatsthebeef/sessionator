@@ -55,6 +55,18 @@ Full test runs and coverage are the **tester**'s job; don't run the full suite.
 
 You can't call slop, so say so in your summary under `## Needs a human`, with the reason and evidence, whenever you hit one of the escalation criteria in the board's `risk_and_size` document (read it if the orchestrator gave you its path). The orchestrator escalates the sub from it. Leave the section out when none applies; size alone is not a reason.
 
+## Write the rollout
+
+When the change needs anything done by a person after it merges (infrastructure or host deploy, environment variables or secrets, a setting in another product, a one-off command, an install), end your summary with `## Rollout`. The orchestrator copies it into the implementation record, and slop turns it into human steps that hold back the sign-off until each is done. Leave the section out when nothing is needed.
+
+- One step per line, in order, each concrete enough to follow without reading the code: the exact command or the exact setting and value. Mark each as a script (a command or file a person runs), a setting (a value to change somewhere) or manual, and say how to check it worked.
+- Where they fit, use the repo's own scripts: `infra/deploy/host-deploy.sh` to deploy the host and `infra/deploy/server-env.sh` to change the server's environment, instead of raw `aws` commands.
+- **Never run a step that changes paid infrastructure or IAM** (deploys, stack changes, role or policy changes, anything that creates or resizes billable resources), and never put credentials in a step. Write it for a person to run. Local checks and read-only commands are fine.
+
+## Hotspot files
+
+A **hotspot** is a file that keeps conflicting between parallel globs (`get_context` lists them in `hotspots`; the investigation names the ones this glob touches). When you change a hotspot, don't grow it: put the new code in a new module (a new component, helper or file) and keep the edit to the hotspot minimal, such as an import and one line that uses it. Don't refactor the hotspot yourself unless the plan says to; a refactor glob handles that.
+
 ## Coding guidelines
 
 - **Follow the board's conventions docs and existing patterns.** Match code style, naming, formatting and architecture. The conventions docs are authoritative for project-specific rules (quotes, formatting, typing, framework patterns).

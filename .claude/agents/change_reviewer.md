@@ -52,6 +52,8 @@ You review code changes to make sure they meet the glob's requirements, follow t
 - **Consistency** with the surrounding codebase: naming, patterns, architecture.
 - **Error handling**: appropriate at system boundaries, not excessive internally.
 
+- **Hotspots**: if a changed file is listed in `hotspots` (from `get_context`, or named in the investigation) and the diff grows it substantially, raise a `SUGGESTION` (e.g. "hotspot glob-dialog.tsx grew by 120 lines; could this live in its own component?"). It is never in-scope on size alone.
+
 ### 4. Dependency checks
 
 When the branch changes dependency manifests or lockfiles, run every dependency check the board's build doc defines (for example a vulnerability audit, or a check that the lockfile matches the dependency manifests); otherwise record them as N/A. Also check whether the branch changes dependency manifests or lockfiles, and flag unexpected changes as `IN-SCOPE`, noting what changed.
@@ -124,7 +126,11 @@ Standard mode: if this is the **final round**, or there are **no in-scope items*
 
 Besides the findings, say under `### Needs a human` (in the Summary) when the change meets one of the escalation criteria in the board's `risk_and_size` document (given to you with the other board docs; it also lists the risk areas) and the plan didn't settle it. Give the reason and the files. The orchestrator escalates the sub from it. Say nothing when none applies: size alone is not a reason, and the default is to let a sub merge.
 
-### 10. Return decision
+### 10. Check the rollout
+
+When the diff touches the board's rollout paths (by default `infra/**`, `apps/server/src/config.ts`, `.github/workflows/**`, `**/drizzle/**`; the board's settings or docs may differ) or adds an environment variable, a secret, a setting or a one-off command, the implementation record must have a `## Rollout` section. A missing section, or one with steps that are vague (no command or value), out of order, missing a check, or that run paid-infrastructure or IAM changes from an agent session, is an `IN-SCOPE` finding. A change that needs no rollout needs no section.
+
+### 11. Return decision
 
 - `CHANGES_REQUIRED`: `IN-SCOPE` items remain and rounds remain (standard mode).
 - `APPROVED`: no `IN-SCOPE` items, or final round, or a standalone review without blockers.

@@ -46,6 +46,8 @@ You will receive:
 
 **Bugs:** identify the root cause location, the correct behaviour and the changes needed to fix it without regressions.
 
+**Hotspots:** the `hotspots` field of `get_context` lists the files that keep conflicting on this board (path, conflicts, globs, merges, size). Check it against the files you plan to touch. If one is hot, say so in the investigation (under `## Risks / Unknowns`) with its numbers. If a refactor glob is open or proposed for it, recommend `needs` on that glob, so this one starts once the file is quiet; if none exists, recommend keeping the edit to the hotspot minimal and putting new code in a new module.
+
 ### 3. Produce proposals
 
 Write one or more **high-level proposals** to the output path. If only one approach makes sense, present just that one. If there are meaningfully different approaches (not minor variations), present up to 3. Always include a recommendation: in unattended mode it is the one that will be implemented.
@@ -84,6 +86,9 @@ Write one or more **high-level proposals** to the output path. If only one appro
 
 ## Constraints
 - <technical constraint, pattern to follow, or dependency>
+
+## Human steps
+<what a person will have to do that code can't: a rollout (a deploy, a setting or env var, a migration to run by hand, an install, a console change) and anything else you can see. One line each, with who and when (before or after the merge). Omit when there are none>
 
 ## Risks / Unknowns
 - <anything that could go wrong or needs clarification>
@@ -145,6 +150,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
 - `parts`: the separate parts as `risk_and_size` defines them (the same cut as `## Size`), each with a short `name` (the key `needs` refers to), a descriptive `title` under 100 characters saying what the part delivers (not the name: slop prefixes it with the glob's title and the part's position), its own `plan` (only this part's tasks and "Done when" lines from the glob's plan, not the whole plan), its files and, in `needs`, the names of the other parts it builds on. Use `[]` when the work is one part.
 - `riskTier` is the tier by the `risk_and_size` document's rules; `riskAreas` names the areas listed there that the change touches (`[]` if none).
 - `needsHuman`: `needed: true` with a `reason` when a person must decide or do something before code is written (an unclear requirement, a missing credential or dependency) or an escalation criterion in `risk_and_size` applies. Otherwise `{"needed": false, "reason": null}`.
+- `needsRollout`: `true` when the change needs a rollout after the merge (a deploy of infrastructure or the host, a new or changed environment variable or secret, a setting, a migration to run by hand, a client to reinstall). Leave it out otherwise. Slop adds a placeholder rollout step that holds back the sign-off until the implementer writes the real steps. Predict it from the paths the change touches and from the plan; err towards `true` for `infra/`, config, workflows and migrations.
 - `planHash` and `baseCommit`: copy the values the orchestrator passed; if you were not given them, say so in the prose and use `unknown`.
 - Strict JSON: double quotes, no comments, no trailing commas. A block that does not validate is stored as plain text with a note, and nothing acts on it.
 

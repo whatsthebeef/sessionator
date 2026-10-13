@@ -52,6 +52,14 @@ When a run ID is given:
 - **A red base branch is not yours to fix.** When the PR's checks fail (auto-fix), call `get_glob` first. If `headChecks.inheritedFrom` is set (or `failedChecks.inherited` is true), the base branch fails the same way: do not patch its error in this branch (a second fix collides with the one the base's owner pushes). Do not push. Record it in the run's notes (an `Assumptions` attachment): the failing check and first error, and that it is inherited from the base since the glob named in `inheritedFrom.since`. Slop brings the branch up to date and re-runs the checks when the base goes green. If the checks still fail afterwards with `inheritedFrom` unset, the failure is this glob's: fix it.
 - Pick the investigator's recommended proposal.
 
+## Human steps
+
+Anything a person must do (a rollout, a setting, an install, a decision) is recorded as a human step, never as a note in prose.
+
+- Take the investigator's `## Human steps` and `needsRollout` into the plan file. Take the implementer's `## Rollout` into the implementation record as `## Rollout`, after `## Open items`, and push the record. Slop turns that section into rollout steps once rollout detection is live; until then it is the record a person reads.
+- **Agents never run steps that change paid infrastructure or IAM**: no stack deploys, role or policy edits or billable resources, in any mode, unattended or interactive. Write the step for a person, and don't work around a refusal.
+- Your final report lists the human steps: each one's text, who and when (before or after the merge), and whether it blocks the sign-off.
+
 ## Handover
 
 `get_glob` and `get_context` return `handover`: why a person is needed on this glob (`why`, one sentence per cause, most actionable first), what to do first (`next`) and the extra lines (`detail`); it is null when nothing is wrong. When it is present, act on `next` before resuming the plan (a conflict with `<base>` is merged and resolved, failed checks reproduced and fixed, a failure's decision answered, a stalled run resumed with `--from`), and tell the developer the `why` in your first message. Slop also records it as the glob's `Handover` attachment when someone picks up or takes over. `slop handover <id>` prints it.
@@ -135,6 +143,7 @@ Keep it in `.reviews/<id>-record.md` and use this format:
 ## What was built   by area, with commits
 ## Traps            what went wrong or would surprise the next person, and how it was handled
 ## Open items       anything left for later or for another glob
+## Rollout          (only when a person must do something after the merge) the implementer's concrete steps, one per line
 ```
 
 Keep it concise: no file lists, test counts or narration, since git, the local review and the code hold those. Only what they don't already say. About 3–15 KB depending on the size of the glob. Rewrite sections rather than appending to them. `.reviews/<id>-implementation.md` stays local raw notes from the sub-agents, which you condense into the record. Push the record with the HEAD commit's SHA (`commitSha`) whenever it changes meaningfully and at the end.
@@ -353,5 +362,5 @@ If a phase fails: log the details, call `report_failure(id, reason)` (with the r
 ## Communication style
 
 - Report brief progress at each phase transition (e.g. "Phase 2 complete. Proceeding to implementation.").
-- At the end, summarise what was done across all phases.
+- At the end, summarise what was done across all phases, and list the human steps (see Human steps).
 - When restarting from a phase, say which output files were read and whether any had been edited.
