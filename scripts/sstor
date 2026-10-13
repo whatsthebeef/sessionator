@@ -173,8 +173,12 @@ Session management:
 Slop globs (through the slop CLI; board from SLOP_BOARD in .sstor/sstor.conf):
   --glob <id>             Pick up a glob (slop pick-up), make its worktree on its branch,
                           slop init + personal settings, launch /run-glob
-  --take-over             With --glob: supersede a queued or active routine run
-  --resolve               With --glob: merge origin/<base> into the glob's branch, opening your
+  --take-over             With --glob: supersede a queued or active routine run. This is the
+                          usual way in when a glob conflicts with <base> or its run is stuck:
+                          the Claude session merges <base> and asks you about real conflicts
+  --resolve               Advanced, rarely needed: resolve a conflict entirely by hand, with no
+                          Claude session. Use --take-over instead unless you know you want this.
+                          With --glob: merge origin/<base> into the glob's branch, opening your
                           mergetool on any conflicts, then commit (<id>: Merge <base>) and push.
                           Uses the glob's worktree (made if missing); refuses uncommitted changes;
                           never launches Claude or force-pushes. SSTOR_CHECKS="<cmd>" runs fast
@@ -914,7 +918,9 @@ if tmux has-session -t "=$SESSION" 2>/dev/null; then
 fi
 
 # Claude is about to (re)launch: install the agent set first, so new agents and commands
-# register. Never while Claude runs in an existing session (handled above).
+# register. Never while Claude runs in an existing session (handled above). --committed leaves
+# an agent set the checkout has committed alone (newer versions arrive through slop's agent-set
+# glob), so launches don't dirty .claude/; sstor init and --sync still install the latest.
 if $NO_SLOP; then
   if $NEW_SETUP; then
     python3 "$SSTOR_PY/sstor_init.py" "$SSTOR_DIR/.claude/settings.local.json" "$START_DIR" 2>/dev/null || true
@@ -922,7 +928,7 @@ if $NO_SLOP; then
 elif $NEW_SETUP || [[ -n "$GLOB" ]]; then
   INIT_STRICT=false
   [[ -n "$GLOB" ]] && INIT_STRICT=true
-  if ! checkout_init "$START_DIR"; then
+  if ! checkout_init "$START_DIR" --committed; then
     [[ -n "$GLOB" ]] && exit 1
     echo "Continuing without a fresh agent set"
   fi

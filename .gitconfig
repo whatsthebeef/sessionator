@@ -3,7 +3,7 @@
 	guitool = nvimdiff
 [merge]
 	tool = nvimdiff
-	conflictstyle = diff3
+	conflictStyle = zdiff3
 [difftool]
 	prompt = false
   tool = nvim -d
@@ -22,3 +22,8 @@
 	excludesFile = /Users/john/.gitgrepignore
 [pull]
 	rebase = false
+[rerere]
+	enabled = true
+[mergetool]
+	keepBackup = false
+	prompt = false
