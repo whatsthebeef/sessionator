@@ -130,7 +130,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
   "files": [{"path": "apps/server/src/x.ts", "change": "create | modify | delete"}],
   "modules": ["server", "web"],
   "expectedLines": {"min": 40, "max": 120},
-  "parts": [{"name": "core", "files": ["packages/core/src/x.ts"], "needs": []}],
+  "parts": [{"name": "core", "title": "Add the widget schema and store", "summary": "Adds the widget table and the store that reads and writes it.", "plan": "## Tasks\n- [ ] Add the widget table.\nDone when: widgets can be stored and read back.", "files": ["packages/core/src/x.ts"], "needs": []}],
   "riskTier": "low | normal | high",
   "riskAreas": [],
   "needsHuman": {"needed": false, "reason": null},
@@ -142,7 +142,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
 
 - `files`: every file the recommended proposal creates, modifies or deletes. `modules`: the packages or areas they fall in.
 - `expectedLines`: a range for lines changed, not a promise.
-- `parts`: the separate parts as `risk_and_size` defines them (the same cut as `## Size`), each with its files and, in `needs`, the names of the other parts it builds on. Use `[]` when the work is one part.
+- `parts`: the separate parts as `risk_and_size` defines them (the same cut as `## Size`), each with a short `name` (the key `needs` refers to), a descriptive `title` under 100 characters saying what the part delivers (not the name: slop prefixes it with the glob's title and the part's position), a 1–2 sentence `summary`, its own `plan` (only this part's tasks and "Done when" lines from the glob's plan, not the whole plan), its files and, in `needs`, the names of the other parts it builds on. Use `[]` when the work is one part.
 - `riskTier` is the tier by the `risk_and_size` document's rules; `riskAreas` names the areas listed there that the change touches (`[]` if none).
 - `needsHuman`: `needed: true` with a `reason` when a person must decide or do something before code is written (an unclear requirement, a missing credential or dependency) or an escalation criterion in `risk_and_size` applies. Otherwise `{"needed": false, "reason": null}`.
 - `planHash` and `baseCommit`: copy the values the orchestrator passed; if you were not given them, say so in the prose and use `unknown`.
