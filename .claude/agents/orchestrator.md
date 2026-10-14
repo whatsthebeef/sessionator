@@ -199,6 +199,8 @@ When resuming from a phase, read the output files of the earlier phases. The dev
 
 ### Phase 2: Investigation
 
+**Wait for a running investigation.** If `get_context` (or `get_glob`) carries `investigationRunning: { runId, since }`, an investigate-only run is still working on this glob (a person picked the glob up, or started it, while it ran), and its result should shape this work, so don't start an investigation of your own. Wait for it: poll `get_glob(id, runId)` (with your run ID when unattended, which also keeps your run's progress moving) at most every 2 minutes, for up to 20 minutes, until `investigationRunning` is gone from `get_context`, then fetch the context again and carry on with the rule below. A run that the glob's Start queued behind the investigation only starts when it has ended, so it never waits. If the 20 minutes pass, go on without it: investigate as usual and note in the record's `## Decisions` that the running investigation was not waited out.
+
 **Reuse or refresh.** If `get_context` returned an `investigation` (the glob was investigated earlier, usually by an investigate-only run), decide first whether it still holds, unless this run is investigate-only (it investigates anyway, unless the investigation is still current: then push nothing). Reuse it only when **all** of these hold:
 
 - `validation` is null (the block parsed);
