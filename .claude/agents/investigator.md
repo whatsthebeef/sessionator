@@ -81,8 +81,8 @@ Write one or more **high-level proposals** to the output path. If only one appro
 ## Recommendation
 <which proposal and why — consider codebase patterns, risk, complexity and team choices>
 
-## Size
-<only if the work is too big for one PR to ship and review: the parts you would cut it into, each able to ship on its own, and which must come first. Omit otherwise>
+## Workstreams
+<only if the work is big enough that several agents can build parts of it at the same time inside one run and one PR; omit for a small glob (one workstream or none). One entry per workstream: a name (W0, W1, …), a one-line goal, its files, its share of plan.md (its tasks and "Done when" lines) and its needs (e.g. "needs W0"). A shared contract, schema or port that the others build on is W0; workstreams that don't need each other are marked parallel. Ownership rule: every shared or hotspot file (e.g. `apps/web/src/lib/api.ts`, `glob-card`, `glob-dialog`, `glob-view/actions.tsx`, the store port) belongs to W0 or to exactly one workstream; two workstreams that would edit the same file are merged into one. Start from `get_context` `size.forecast` (its parts are candidate workstreams) and confirm or correct them against the code. The workstreams are not globs and never appear on the board. If one could ship on its own and nothing else needs it, say so as a possible scope cut for a person to decide>
 
 ## Constraints
 - <technical constraint, pattern to follow, or dependency>
@@ -148,7 +148,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
 
 - `files`: every file the recommended proposal creates, modifies or deletes. `modules`: the packages or areas they fall in.
 - `expectedLines`: a range for lines changed, not a promise.
-- `parts`: the separate parts as `risk_and_size` defines them (the same cut as `## Size`), each with a short `name` (the key `needs` refers to), a descriptive `title` under 100 characters saying what the part delivers (not the name: slop prefixes it with the glob's title and the part's position), its own `plan` (only this part's tasks and "Done when" lines from the glob's plan, not the whole plan), its files and, in `needs`, the names of the other parts it builds on. Use `[]` when the work is one part.
+- `parts`: the workstreams from `## Workstreams` (the same cut), each with a short `name` (the key `needs` refers to), a descriptive `title` under 100 characters saying what the workstream delivers, its own `plan` (only its tasks and "Done when" lines from the glob's plan, not the whole plan), its files (none shared with another workstream) and, in `needs`, the names of the workstreams it builds on. Use `[]` when the work is one workstream or none.
 - `relations`: the other open globs and decisions this one is held back by, found in the code you read and in the plan (`[]` says you looked and found none; leave the field out when you did not look). Each is `{"to": "<glob or decision ID>", "gate": "start", "until": "merged", "reason": "<one line naming the file or symbol that shows it>", "files": [...]}`. `gate` is what is held back (`start`, `merge` or `sign_off`) and defaults to `start`; `until` is what `to` must reach (`merged`, `decided` or `signed_off`) and defaults to `merged`.
   - **A need:** the code this change uses (a function, type, endpoint, schema, component) is added or changed by another open glob, so that code has to be on main first: `to` is that glob, `gate` `start`, `until` `merged`, and the reason names the symbol or file.
   - **A decision:** the plan only makes sense once an open decision is made (a decision glob listed by `get_context` or `list_globs`, an ID like `s15k190`): `to` is the decision glob, `gate` `start` (or `merge` when the decision only affects shipping), `until` `decided`, and the reason names the choice that is open.
@@ -161,7 +161,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
 
 ## Guidelines
 
-- **Report oversize**: if mapping the criteria to code shows the glob holds more separate parts than the `risk_and_size` document allows for one PR (its "What counts as a separate part"), say so under `## Size`. Don't plan the whole thing as one change and don't split it yourself; the orchestrator does that.
+- **Cut big work into workstreams**: if mapping the criteria to code shows the glob holds several parts (see the `risk_and_size` document's "What counts as a separate part"), cut them under `## Workstreams` for the orchestrator to fan out inside the run. One investigation per glob: don't investigate each workstream separately, and don't split the glob into board globs.
 - **Be specific**: not "update the handler" but "add a `POST /api/widgets` route in `src/routes/widgets.ts` that validates the body against `WidgetSchema` and calls `WidgetService.create()`".
 - **Every acceptance criterion must appear** in the mapping with a concrete approach. If one can't be addressed, flag it explicitly.
 - **Follow existing patterns and the board's conventions docs.** Proposals must not require anything the conventions forbid.

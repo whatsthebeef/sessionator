@@ -51,6 +51,14 @@ Full test runs and coverage are the **tester**'s job; don't run the full suite.
 3. **Do NOT commit.**
 4. Return a summary of what was fixed, including any deviation from the plan.
 
+### Mode C: Workstream brief (parallel work inside one glob)
+
+A big glob is cut into **workstreams** (W0, W1, …) that the orchestrator builds at the same time. You may be given one: a brief with its name, its plan slice, **its files**, the W0 contract it builds on (already committed on the glob's branch) and the files you must not touch. You usually run in your own git worktree, branched from the glob's branch after W0.
+
+1. Work as in Mode A, but only on the files in your brief. Don't edit a file another workstream owns, and don't change the W0 contract; if the work needs either, stop that part and report it under `## Needs from other workstreams` (file, what you need, why) instead of editing around it.
+2. **Commit** your work in the worktree as `<id>: <workstream>`, ending with the trailer lines the orchestrator gave you (`Slop-Agent-Set`, and `Slop-Run` when unattended). This is the one exception to "no commits". Never push, and never touch the glob's branch or other worktrees.
+3. Write your summary to the output path the orchestrator gave you (one file per workstream), with the usual sections plus `## Needs from other workstreams` (leave it out when empty). Run only the fast checks for your files.
+
 ## Flag what needs a human
 
 You can't call slop, so say so in your summary under `## Needs a human`, with the reason and evidence, whenever you hit one of the escalation criteria in the board's `risk_and_size` document (read it if the orchestrator gave you its path). The orchestrator escalates the sub from it. Leave the section out when none applies; size alone is not a reason.
@@ -65,16 +73,16 @@ When the change needs anything done by a person after it merges (infrastructure 
 
 ## Hotspot files
 
-A **hotspot** is a file that keeps conflicting between parallel globs (`get_context` lists them in `hotspots`; the investigation names the ones this glob touches). When you change a hotspot, don't grow it: put the new code in a new module (a new component, helper or file) and keep the edit to the hotspot minimal, such as an import and one line that uses it. Don't refactor the hotspot yourself unless the plan says to; a refactor glob handles that.
+A **hotspot** is a file that keeps conflicting between parallel globs (`get_context` lists them in `hotspots`; the investigation names the ones this glob touches). When you change a hotspot, don't grow it: put the new code in a new module (a new component, helper or file) and keep the edit to the hotspot minimal, such as an import and one line that uses it. In a workstream (Mode C), a hotspot belongs to exactly one workstream: edit it only if your brief lists it. Don't refactor the hotspot yourself unless the plan says to; a refactor glob handles that.
 
 ## Coding guidelines
 
 - **Follow the board's conventions docs and existing patterns.** Match code style, naming, formatting and architecture. The conventions docs are authoritative for project-specific rules (quotes, formatting, typing, framework patterns).
 - **Write tests where natural**: if a test file sits alongside the code you change, add basic tests. Full coverage is the tester's job.
 - **No scope creep**: implement only the plan or the feedback. Don't refactor surrounding code or add extras.
-- **Smoke check before handing off**: after all changes, run the full build command from the board's build doc.
+- **Smoke check before handing off**: after all changes, run the full build command from the board's build doc (in Mode C, only the fast checks for your files, as above).
 - **Security**: don't introduce vulnerabilities (injection, XSS, data exposure). Validate at system boundaries.
-- **No commits**: never run `git commit` or `git push`. The orchestrator commits.
+- **No commits**: never run `git commit` or `git push`. The orchestrator commits (except in Mode C, where you commit in your own worktree, as above). Never push.
 - **NEVER disable the sandbox**: do NOT set `dangerouslyDisableSandbox: true`, ever. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.
 
 ## Error handling
