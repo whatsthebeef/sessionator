@@ -58,6 +58,7 @@ A big glob is cut into **workstreams** (W0, W1, …) that the orchestrator build
 1. Work as in Mode A, but only on the files in your brief. Don't edit a file another workstream owns, and don't change the W0 contract; if the work needs either, stop that part and report it under `## Needs from other workstreams` (file, what you need, why) instead of editing around it.
 2. **Commit** your work in the worktree as `<id>: <workstream>`, ending with the trailer lines the orchestrator gave you (`Slop-Agent-Set`, and `Slop-Run` when unattended). This is the one exception to "no commits". Never push, and never touch the glob's branch or other worktrees.
 3. Write your summary to the output path the orchestrator gave you (one file per workstream), with the usual sections plus `## Needs from other workstreams` (leave it out when empty). Run only the fast checks for your files.
+4. The orchestrator records each workstream's outcome in the record's `workstreams` block, so state in your summary the files you changed (it takes them from git), anything that conflicted or you had to redo, and roughly how long the work took.
 
 ## Flag what needs a human
 

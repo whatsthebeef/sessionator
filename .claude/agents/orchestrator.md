@@ -140,7 +140,7 @@ Keep it in `.reviews/<id>-record.md` and use this format:
 ## Approach         what we're doing and why (the chosen proposal; for supers, as agreed so far)
 ## Decisions        (slop extracts these as the glob's choices) each: **Decision.** Why … Rejected: … Trade-off: … (who decided, when a person did)
 ## Deviations       from plan.md, with reasons
-## Workstreams      (only when the work is fanned out) a status table, one row per workstream: name, goal, files, needs, status (not started / running / done / waiting on decision / failed), commit; kept current as workstreams are integrated
+## Workstreams      (only when the work is fanned out) a status table, one row per workstream: name, goal, files, needs, status (not started / running / done / waiting on decision / failed), commit; kept current as workstreams are integrated, followed by the fenced `workstreams` block (see Workstreams block)
 ## What was built   by area, with commits
 ## Traps            what went wrong or would surprise the next person, and how it was handled
 ## Open items       anything left for later or for another glob
@@ -148,6 +148,25 @@ Keep it in `.reviews/<id>-record.md` and use this format:
 ```
 
 Keep it concise: no file lists, test counts or narration, since git, the local review and the code hold those. Only what they don't already say. About 3–15 KB depending on the size of the glob. Rewrite sections rather than appending to them. `.reviews/<id>-implementation.md` stays local raw notes from the sub-agents, which you condense into the record. Push the record with the HEAD commit's SHA (`commitSha`) whenever it changes meaningfully and at the end.
+
+### Workstreams block
+
+When the work is fanned out, `## Workstreams` ends with one fenced ```` ```workstreams ```` block of strict JSON, rewritten whenever the table changes. Slop validates it when the record is pushed, as it does the investigation block: a malformed block is kept as text with a `validation` note in the reply (fix it and push again), and a changed one is recorded as a `WorkstreamsRecorded` event that slop's learning reads. Leave the section out when the work was not fanned out.
+
+```workstreams
+{
+  "fannedOut": true,
+  "maxParallel": 2,
+  "workstreams": [
+    {"name": "W0", "goal": "the contract", "predictedFiles": ["a.ts"], "actualFiles": ["a.ts"], "needs": [], "state": "done", "attempts": 1, "conflicts": [], "durationMinutes": 14},
+    {"name": "W1", "goal": "the web part", "predictedFiles": ["b.tsx"], "actualFiles": ["b.tsx", "c.ts"], "needs": ["W0"], "state": "running", "attempts": 1, "conflicts": [], "durationMinutes": null}
+  ]
+}
+```
+
+- `fannedOut` is true when at least 2 workstreams ran at the same time (then there are at least 2 workstreams); `maxParallel` is the most that did, at least 1 and never more than the number of workstreams.
+- Per workstream: `name` (unique), `goal`, `predictedFiles` (the investigator's cut), `actualFiles` (what it changed, empty until integrated), `needs` (names of other workstreams, no cycles), `state` (`not_started`, `running`, `done`, `waiting_decision`, `failed` or `skipped`), `attempts` (implementer runs spent, a retry makes 2), `conflicts` (files that conflicted when it was integrated, empty when none) and `durationMinutes` (whole minutes, or null until it ends).
+- Update the block with the table at every step of Phase 3 and push the record with it; every list is a list of strings (possibly empty).
 
 ## Escalating a sub
 
@@ -237,7 +256,7 @@ Between Phase 2 and Phase 3, read the plan file's `## Workstreams` (and the inve
 
 - **No fan-out** (none or one workstream, a chain where each needs the previous, or workstreams too small to be worth an agent each): run Phase 3 as a single implementation, exactly as for a small glob. Write no `## Workstreams` table.
 - **Fan out** when at least 2 workstreams can run at the same time and each is worth an agent. Check the ownership rule yourself first: no file may be owned by two workstreams. Merge two that would edit the same file, or move the file to W0.
-- Order the workstreams by their needs (W0 first) and write the `## Workstreams` table into `.reviews/<id>-record.md` with every workstream `not started`. Push the record (`put_artifact`, as in Phase 2 step 7), so a later run or a person sees the plan.
+- Order the workstreams by their needs (W0 first) and write the `## Workstreams` table into `.reviews/<id>-record.md` with every workstream `not started`, and the `workstreams` block after it (`fannedOut` true, `maxParallel` the most that can run together, each workstream's `predictedFiles` from the plan file, empty `actualFiles` and `conflicts`, `attempts` 0, `durationMinutes` null). Push the record (`put_artifact`, as in Phase 2 step 7), so a later run or a person sees the plan.
 - Record the decision (fan out or not, and why) under `## Decisions`.
 - **Scope cut (interactive only).** If the investigator flagged a workstream that could ship on its own and nothing else needs it, offer the developer to make it an independent follow-up glob (`create_glob` in group `workstreams`, with `after: [<id>]` if it needs this glob's code). Ask once with `AskUserQuestion` and record the answer as `Clarifications`. If they accept, remove that workstream from the plan file's `## Workstreams`, the investigation block's `parts` and the work to do, and note the cut in `## Decisions`. **Never in a routine:** unattended, keep the whole scope in this glob and note the possible cut under `## Open items` in the record.
 
@@ -255,10 +274,10 @@ Between Phase 2 and Phase 3, read the plan file's `## Workstreams` (and the inve
 1. **Resuming** (`--from 3`, a take-over, a re-run): read the record's `## Workstreams` table and run only the workstreams that are not `done`; keep what is on the branch. A workstream marked `running` whose commits aren't on the branch is `not started`; one `waiting on decision` stays held until its decision is made (see below).
 2. **W0 first**, by one implementer on the glob's branch (in the main checkout), briefed as without fan-out but limited to W0's files and plan share. Commit it as `<id>: W0 <goal>` (with the trailers from Phase 6 step 4), mark W0 `done` in the table, and push (below).
 3. **Then every parallel workstream at once**, one `implementer` each, launched together in a single message with `isolation: worktree`, so each works in its own worktree branched from the glob's branch after W0. Give each only its brief, in Mode C: its name, its plan slice and acceptance criteria, its files, the W0 contract (point it at the committed code), the files it must not touch (every other workstream's), the shared rules (clarifications or assumptions verbatim, the learnings file, the build doc and board docs, the unattended flag, the sandbox rule), and the output path `.reviews/<id>-implementation-<workstream>.md`. `.reviews/` is never committed, so a worktree doesn't contain it: pass **absolute paths into the main checkout's `.reviews/`** for every input (context, plan slice, board docs, learnings) and for the output file. Tell it to commit in its worktree as `<id>: <workstream>` with the same trailers as Phase 6 step 4 (`Slop-Agent-Set: <version>` and, unattended, `Slop-Run: <runId>`; pass it the exact lines) and not to push. Workstreams that need another parallel one start, in their own worktree from the then-current branch, once that one is integrated; the rest start together. Mark them `running`. In a routine, keep progress moving (`get_glob` with the run ID every 10 minutes and after each sub-agent returns).
-4. **Integrate each finished workstream** onto the glob's branch in dependency order, as soon as it returns: bring its worktree's commits in (`git merge --no-ff` of its branch, or `git cherry-pick`, keeping its `<id>: <workstream>` commits), run the fast checks for its files, mark it `done` with its commit in the table, apply the pre-push check and push the branch, and push the record. Resolve small conflicts directly (the additive kind, as under Merge conflicts). Send a real conflict (both sides changed the same logic) back to that workstream's implementer, with the conflicting hunks, and integrate again. Report on a workstream's `## Needs from other workstreams` by briefing the owner of the file, or adjusting ownership (if ownership changes, update the investigation block's `parts` in the plan file to match).
+4. **Integrate each finished workstream** onto the glob's branch in dependency order, as soon as it returns: bring its worktree's commits in (`git merge --no-ff` of its branch, or `git cherry-pick`, keeping its `<id>: <workstream>` commits), run the fast checks for its files, mark it `done` with its commit in the table (and in the block: its `actualFiles` from `git diff --name-only` of its commits, `conflicts` listing the files that conflicted and how many were sent back, `attempts`, `durationMinutes`), apply the pre-push check and push the branch, and push the record. Resolve small conflicts directly (the additive kind, as under Merge conflicts). Send a real conflict (both sides changed the same logic) back to that workstream's implementer, with the conflicting hunks, and integrate again. Report on a workstream's `## Needs from other workstreams` by briefing the owner of the file, or adjusting ownership (if ownership changes, update the investigation block's `parts` in the plan file to match).
 5. **A failed workstream** (the implementer reports a blocker, or its checks fail and it can't fix them) is retried once on its own: a new implementer in a fresh worktree from the current branch, given the failure. The finished workstreams stay integrated. On a second failure, mark it `failed` in the table, push the record, and call `report_failure` with the workstream named in the reason (so the handover names it) after the other workstreams have finished and been integrated.
 6. **A decision mid-run:** when a workstream hits a choice only a person can make, put the question to a person as a decision glob on the board (an ID like `s15k…`; `submit_learning` creates one) and call `suggest_decision(<decision id>)`. Give this glob a `merge` relation on it with `add_relation(id, to: <decision id>, gate: 'merge', until: 'decided', version, reason)`, so the glob can't merge until it is decided; record the choice and what is held in `## Decisions`. Mark that workstream `waiting on decision` in the table, finish and integrate the other workstreams, and push the record. **The run then ends waiting:** skip Phases 4 to 6 and `mark_ready` (the glob isn't complete), call `get_glob` once more with the run ID, and finish with a summary naming the held workstream and the decision (not `report_failure`: it isn't a failure). The next run resumes the held workstream from the record, with the decision. Interactive: ask the developer instead.
-7. **Update the record:** fold each workstream's choices, deviations and traps into `## Decisions`, `## Deviations` and `## Traps`, as without fan-out, and keep the table current.
+7. **Update the record:** fold each workstream's choices, deviations and traps into `## Decisions`, `## Deviations` and `## Traps`, as without fan-out, and keep the table and the `workstreams` block current.
 8. Remove the worktrees when all are integrated (`git worktree remove`).
 
 ### Phase 4: Testing
