@@ -46,7 +46,7 @@ You will receive:
 
 **Bugs:** identify the root cause location, the correct behaviour and the changes needed to fix it without regressions.
 
-**Hotspots:** the `hotspots` field of `get_context` lists the files that keep conflicting on this board (path, conflicts, globs, merges, size). Check it against the files you plan to touch. If one is hot, say so in the investigation (under `## Risks / Unknowns`) with its numbers. If a refactor glob is open or proposed for it, recommend `needs` on that glob, so this one starts once the file is quiet; if none exists, recommend keeping the edit to the hotspot minimal and putting new code in a new module.
+**Hotspots:** the `hotspots` field of `get_context` lists the files that keep conflicting on this board (path, conflicts, globs, merges, size). Check it against the files you plan to touch. If one is hot, say so in the investigation (under `## Risks / Unknowns`) with its numbers. If a refactor glob is open or proposed for it, recommend a start relation on that glob (`relations`), so this one starts once the file is quiet; if none exists, recommend keeping the edit to the hotspot minimal and putting new code in a new module.
 
 ### 3. Produce proposals
 
@@ -136,6 +136,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
   "modules": ["server", "web"],
   "expectedLines": {"min": 40, "max": 120},
   "parts": [{"name": "core", "title": "Add the widget schema and store", "plan": "## Tasks\n- [ ] Add the widget table.\nDone when: widgets can be stored and read back.", "files": ["packages/core/src/x.ts"], "needs": []}],
+  "relations": [{"to": "s1t2", "gate": "start", "until": "merged", "reason": "uses humanSteps() from s1t2", "files": ["packages/core/src/x.ts"]}],
   "riskTier": "low | normal | high",
   "riskAreas": [],
   "needsHuman": {"needed": false, "reason": null},
@@ -148,6 +149,10 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
 - `files`: every file the recommended proposal creates, modifies or deletes. `modules`: the packages or areas they fall in.
 - `expectedLines`: a range for lines changed, not a promise.
 - `parts`: the separate parts as `risk_and_size` defines them (the same cut as `## Size`), each with a short `name` (the key `needs` refers to), a descriptive `title` under 100 characters saying what the part delivers (not the name: slop prefixes it with the glob's title and the part's position), its own `plan` (only this part's tasks and "Done when" lines from the glob's plan, not the whole plan), its files and, in `needs`, the names of the other parts it builds on. Use `[]` when the work is one part.
+- `relations`: the other open globs and decisions this one is held back by, found in the code you read and in the plan (`[]` says you looked and found none; leave the field out when you did not look). Each is `{"to": "<glob or decision ID>", "gate": "start", "until": "merged", "reason": "<one line naming the file or symbol that shows it>", "files": [...]}`. `gate` is what is held back (`start`, `merge` or `sign_off`) and defaults to `start`; `until` is what `to` must reach (`merged`, `decided` or `signed_off`) and defaults to `merged`.
+  - **A need:** the code this change uses (a function, type, endpoint, schema, component) is added or changed by another open glob, so that code has to be on main first: `to` is that glob, `gate` `start`, `until` `merged`, and the reason names the symbol or file.
+  - **A decision:** the plan only makes sense once an open decision is made (a decision glob listed by `get_context` or `list_globs`, an ID like `s15k190`): `to` is the decision glob, `gate` `start` (or `merge` when the decision only affects shipping), `until` `decided`, and the reason names the choice that is open.
+  - Two globs that merely change the same files are **not** a relation: slop predicts those itself and uses them only to learn which paths clash. Don't list them. A glob mentioned only as background is not one either.
 - `riskTier` is the tier by the `risk_and_size` document's rules; `riskAreas` names the areas listed there that the change touches (`[]` if none).
 - `needsHuman`: `needed: true` with a `reason` when a person must decide or do something before code is written (an unclear requirement, a missing credential or dependency) or an escalation criterion in `risk_and_size` applies. Otherwise `{"needed": false, "reason": null}`.
 - `needsRollout`: `true` when the change needs a rollout after the merge (a deploy of infrastructure or the host, a new or changed environment variable or secret, a setting, a migration to run by hand, a client to reinstall). Leave it out otherwise. Slop adds a placeholder rollout step that holds back the sign-off until the implementer writes the real steps. Predict it from the paths the change touches and from the plan; err towards `true` for `infra/`, config, workflows and migrations.
