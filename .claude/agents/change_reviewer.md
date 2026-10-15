@@ -133,7 +133,7 @@ When the diff touches the board's rollout paths (by default `infra/**`, `apps/se
 
 Also check how each step is written; each of these is an `IN-SCOPE` finding:
 
-- a title that isn't a short imperative action (over about 120 characters, or carrying conditions or commands), or no `Why:` and `Check:` lines under it, or commands written in backticks or a fenced block instead of one `Run:` line each, or a script path repeated in a `Run:` line or in prose;
+- a title that isn't a short imperative action (over about 120 characters, or carrying conditions or commands), or no `Why:` and `Check:` lines under it, or commands written in backticks, a sentence or a fenced block instead of one `Run:` line each (logins, `export`/`unset`, checkout and the dry run included), or a script path repeated in a `Run:` line or in prose;
 - steps not written per environment: one step covering several environments, environment steps out of the board's `environments` order or ahead of the after-merge steps, an environment the change does not need, a step without its own script, commands or `Check:` for that environment's values, a missing or misspelt `(env: <name>)` suffix, or `blocks: sign_off` where the glob could be signed off before that environment is armed (or missing where it must not be);
 - a note with no action posing as a step;
 - a review, an approval or anything else due before the merge filed as a step;
