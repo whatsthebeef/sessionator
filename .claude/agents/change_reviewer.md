@@ -135,6 +135,7 @@ Also check how each step is written; each of these is an `IN-SCOPE` finding:
 - a title that isn't a short imperative action (over about 120 characters, or carrying conditions or commands), or no Why / Do this / Check it worked under it;
 - a note with no action posing as a step;
 - a review, an approval or anything else due before the merge filed as a step;
+- a step that fails the revert test (if this glob were reverted, would the work still be needed? No: it is a rollout step; yes, or another repo or board, or optional: it belongs in an action glob): standalone, cross-board or optional human work filed as a blocking step;
 - optional setup, or setup that only applies to other boards, filed as a blocking step;
 - a fact that doesn't hold: check each migration number, command, script path and setting against the tree.
 - a step that is a sequence of commands with no script: its `script: <path>` line is missing, or the file is not in the diff or the tree;

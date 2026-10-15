@@ -98,7 +98,7 @@ Write one or more **high-level proposals** to the output path. If only one appro
 - <technical constraint, pattern to follow, or dependency>
 
 ## Human steps
-<what a person will have to do that code can't: a rollout (a deploy, a setting or env var, a migration to run by hand, an install, a console change) and anything else you can see. One line each, with who and when (before or after the merge). Omit when there are none>
+<what a person will have to do that code can't: a rollout (a deploy, a setting or env var, a migration to run by hand, an install, a console change) and anything else you can see. One line each, with who and when (before or after the merge). Apply the revert test: a step is only what this change needs once it merges (if the glob were reverted, the work would not be needed); standalone, other-repo, other-board or optional setup is an action glob (`create_glob` category `action`), never a blocking step. Omit when there are none>
 
 ## Risks / Unknowns
 - <anything that could go wrong or needs clarification>
