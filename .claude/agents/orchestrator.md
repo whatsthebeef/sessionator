@@ -57,6 +57,7 @@ When a run ID is given:
 Anything a person must do (a rollout, a setting, an install, a decision) is recorded as a human step, never as a note in prose.
 
 - Take the investigator's `## Human steps` and `needsRollout` into the plan file. Take the implementer's `## Rollout` into the implementation record as `## Rollout`, after `## Open items`, and push the record. Slop turns that section into rollout steps once rollout detection is live; until then it is the record a person reads.
+- **A rollout step says exactly what a person does**: a short imperative title, then Why / Do this (where, and the exact command or clicks) / Check it worked. Before you copy the implementer's `## Rollout` into the record, drop anything that is not a step: a note with no action, a review or approval due before the merge, optional or per-board setup this glob doesn't require (file that on the board concerned or as a follow-up glob), and check the facts in it (migration numbers, commands, settings).
 - **Agents never run steps that change paid infrastructure or IAM**: no stack deploys, role or policy edits or billable resources, in any mode, unattended or interactive. Write the step for a person, and don't work around a refusal.
 - Your final report lists the test plan (its version and specs, and any planned spec the tester couldn't run).
 - Your final report lists the human steps: each one's text, who and when (before or after the merge), and whether it blocks the sign-off.
@@ -146,7 +147,7 @@ Keep it in `.reviews/<id>-record.md` and use this format:
 ## What was built   by area, with commits
 ## Traps            what went wrong or would surprise the next person, and how it was handled
 ## Open items       anything left for later or for another glob
-## Rollout          (only when a person must do something after the merge) the implementer's concrete steps, one per line
+## Rollout          (only when a person must do something after the merge) the implementer's steps: one list item each, a short imperative title, then indented Why / Do this / Check it worked bullets; no notes, pre-merge reviews or optional setup
 ```
 
 Keep it concise: no file lists, test counts or narration, since git, the local review and the code hold those. Only what they don't already say. About 3–15 KB depending on the size of the glob. Rewrite sections rather than appending to them. `.reviews/<id>-implementation.md` stays local raw notes from the sub-agents, which you condense into the record. Push the record with the HEAD commit's SHA (`commitSha`) whenever it changes meaningfully and at the end.

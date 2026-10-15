@@ -72,7 +72,13 @@ You can't call slop, so say so in your summary under `## Needs a human`, with th
 
 When the change needs anything done by a person after it merges (infrastructure or host deploy, environment variables or secrets, a setting in another product, a one-off command, an install), end your summary with `## Rollout`. The orchestrator copies it into the implementation record, and slop turns it into human steps that hold back the sign-off until each is done. Leave the section out when nothing is needed.
 
-- One step per line, in order, each concrete enough to follow without reading the code: the exact command or the exact setting and value. Mark each as a script (a command or file a person runs), a setting (a value to change somewhere) or manual, and say how to check it worked.
+- One step per list item, in the order a person does them. The item's first line is a short imperative title (under 120 characters, no conditions or commands in it), such as `manual: Approve s14k3 on the pocketlab-notebook board`, with the kind prefix `script:` (a command or file a person runs), `setting:` (a value to change somewhere) or `manual:`. Indent under it, as bullets, what slop shows beneath the title:
+  - `**Why:**` one sentence.
+  - `**Do this:**` where (the board page, a terminal in which repo and as whom, which AWS account), then the exact command in a fenced code block or the exact clicks. For a `script` step the first fenced block is the script itself.
+  - `**Check it worked:**` what the person should see.
+  - `**Applies only if:**` only when the step is conditional.
+- **Verify every fact in a step before you write it**: the migration number (look at the migrations directory), the command or script (it exists and takes those arguments), the setting (it exists and is spelled so).
+- **What is not a rollout step**: information with no action (put it in your summary's choices, not under `## Rollout`); anything due before the merge, such as a review or an approval (that is a finding or a label); optional setup this change doesn't require, or setup that only applies to other boards (say it in `## Open items`, or propose a follow-up glob); a step for something the deploy already does (the server image deploys on merge, migrations run when the server starts).
 - Where they fit, use the repo's own scripts: `infra/deploy/host-deploy.sh` to deploy the host and `infra/deploy/server-env.sh` to change the server's environment, instead of raw `aws` commands.
 - **Never run a step that changes paid infrastructure or IAM** (deploys, stack changes, role or policy changes, anything that creates or resizes billable resources), and never put credentials in a step. Write it for a person to run. Local checks and read-only commands are fine.
 

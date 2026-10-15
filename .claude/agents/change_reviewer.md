@@ -130,6 +130,14 @@ Besides the findings, say under `### Needs a human` (in the Summary) when the ch
 
 When the diff touches the board's rollout paths (by default `infra/**`, `apps/server/src/config.ts`, `.github/workflows/**`, `**/drizzle/**`; the board's settings or docs may differ) or adds an environment variable, a secret, a setting or a one-off command, the implementation record must have a `## Rollout` section. A missing section, or one with steps that are vague (no command or value), out of order, missing a check, or that run paid-infrastructure or IAM changes from an agent session, is an `IN-SCOPE` finding. A change that needs no rollout needs no section.
 
+Also check how each step is written; each of these is an `IN-SCOPE` finding:
+
+- a title that isn't a short imperative action (over about 120 characters, or carrying conditions or commands), or no Why / Do this / Check it worked under it;
+- a note with no action posing as a step;
+- a review, an approval or anything else due before the merge filed as a step;
+- optional setup, or setup that only applies to other boards, filed as a blocking step;
+- a fact that doesn't hold: check each migration number, command, script path and setting against the tree.
+
 ### 11. Check the test plan
 
 When the context file has a `## Test plan`, check it against the diff and the tree at head:
