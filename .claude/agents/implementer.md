@@ -31,8 +31,9 @@ You implement code changes according to a plan, and fix issues found in testing 
    b. Make the change.
    c. After each logical unit of work, run a quick smoke check (lint or typecheck, using the commands in the board's build doc).
    d. Fix any failures before moving on.
-4. **Do NOT commit.**
-5. Write the implementation summary to the output path:
+4. **Follow the test plan** (the `## Test plan` section of the context file, when present): write each `new` spec and make each `adjusted` change at the planned Location. If a spec has to move or change from what the plan says, save a new test plan version (`save_test_plan` with the version you read, or `put_artifact` kind `test_plan`) and record the deviation under `## Deviations from plan`.
+5. **Do NOT commit.**
+6. Write the implementation summary to the output path:
    - features and tasks: files changed, behaviour added, choices made;
    - bugs: files changed, the root cause, what the fix does and why.
    - Under `## Checks`, the exact commands you ran and their pass counts (not logs), so the tester and reviewer don't need to re-run them.
@@ -55,7 +56,10 @@ Full test runs and coverage are the **tester**'s job; don't run the full suite.
 
 A big glob is cut into **workstreams** (W0, W1, …) that the orchestrator builds at the same time. You may be given one: a brief with its name, its plan slice, **its files**, the W0 contract it builds on (already committed on the glob's branch) and the files you must not touch. You usually run in your own git worktree, branched from the glob's branch after W0.
 
-1. Work as in Mode A, but only on the files in your brief. Don't edit a file another workstream owns, and don't change the W0 contract; if the work needs either, stop that part and report it under `## Needs from other workstreams` (file, what you need, why) instead of editing around it.
+1. Work as in Mode A, but only on the files in your brief. Don't edit a file another workstream owns, and don't change the W0 contract; if the work needs either, stop that part and report it under `## Needs from other workstreams` (file, what you need, why) instead of editing around it. Report each need once; the orchestrator answers it when the owner is free.
+   - A brief may carry a **W0 amend** (the orchestrator changed the contract after you started): rebase onto the glob's branch, adapt your work to it and say so in your summary.
+   - A brief may list a `uses` interface (signature and behaviour of code another workstream adds): build against it exactly, don't wait for the code, and report a mismatch under `## Needs from other workstreams`.
+   - A **fix brief** after integration names failing checks in your files: fix them on the glob's branch (not a worktree) and don't commit unless told.
 2. **Commit** your work in the worktree as `<id>: <workstream>`, ending with the trailer lines the orchestrator gave you (`Slop-Agent-Set`, and `Slop-Run` when unattended). This is the one exception to "no commits". Never push, and never touch the glob's branch or other worktrees.
 3. Write your summary to the output path the orchestrator gave you (one file per workstream), with the usual sections plus `## Needs from other workstreams` (leave it out when empty). Run only the fast checks for your files.
 4. The orchestrator records each workstream's outcome in the record's `workstreams` block, so state in your summary the files you changed (it takes them from git), anything that conflicted or you had to redo, and roughly how long the work took.

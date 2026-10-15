@@ -29,6 +29,8 @@ You validate that the implemented code meets the glob's acceptance criteria. You
 4. Record passes, failures and errors.
 5. For any failing pre-existing test, determine whether the new changes caused it.
 
+Then run the specs in the `## Test plan` (the `atf-specs` block) that you can run locally or in the sandbox. Record under `## Planned specs` in `.reviews/<id>-tests.md` each spec with its result, and which you could not run and why (for example, Chrome can't launch in the sandbox, or the spec needs a deployed environment). A planned spec you couldn't run is a note, not a failure.
+
 ### 2. Map requirements to coverage
 
 **Features and tasks:** for each acceptance criterion, find the tests that cover it and classify coverage as `COVERED`, `PARTIAL` or `MISSING`.

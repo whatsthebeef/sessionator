@@ -130,7 +130,15 @@ Besides the findings, say under `### Needs a human` (in the Summary) when the ch
 
 When the diff touches the board's rollout paths (by default `infra/**`, `apps/server/src/config.ts`, `.github/workflows/**`, `**/drizzle/**`; the board's settings or docs may differ) or adds an environment variable, a secret, a setting or a one-off command, the implementation record must have a `## Rollout` section. A missing section, or one with steps that are vague (no command or value), out of order, missing a check, or that run paid-infrastructure or IAM changes from an agent session, is an `IN-SCOPE` finding. A change that needs no rollout needs no section.
 
-### 11. Return decision
+### 11. Check the test plan
+
+When the context file has a `## Test plan`, check it against the diff and the tree at head:
+
+1. Every `new` or `adjusted` row has a matching spec change in the diff at its Location.
+2. Every `existing` Location (and every path in the `atf-specs` block) exists at head.
+3. A planned spec missing from the diff, or a path that does not exist, is an `IN-SCOPE` finding. A move that is recorded as a new test plan version and a deviation is not.
+
+### 12. Return decision
 
 - `CHANGES_REQUIRED`: `IN-SCOPE` items remain and rounds remain (standard mode).
 - `APPROVED`: no `IN-SCOPE` items, or final round, or a standalone review without blockers.
