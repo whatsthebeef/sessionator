@@ -137,6 +137,7 @@ When the context file has a `## Test plan`, check it against the diff and the tr
 1. Every `new` or `adjusted` row has a matching spec change in the diff at its Location.
 2. Every `existing` Location (and every path in the `atf-specs` block) exists at head.
 3. A planned spec missing from the diff, or a path that does not exist, is an `IN-SCOPE` finding. A move that is recorded as a new test plan version and a deviation is not.
+4. A test plan that says no end-to-end cover is needed (an empty matrix and `specs: []`) must give a reason that fits the diff. If the diff changes user-facing behaviour that an existing end-to-end spec could cover, an unjustified empty plan is an `IN-SCOPE` finding.
 
 ### 12. Return decision
 

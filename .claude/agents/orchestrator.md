@@ -119,7 +119,7 @@ Also tell each sub-agent:
 - the glob ID, its category, and for bugs that **this is a bug fix** (reproduce first, fix the root cause, add a regression test);
 - whether the session is **unattended** (then it must not use `AskUserQuestion`);
 - the base branch.
-- the **test plan**: the `## Test plan` section of the context file (path and version), for all four agents (the investigator drafts it when it is absent and pushes it with `save_test_plan` and the run ID).
+- the **test plan**: the `## Test plan` section of the context file (path and version), for all four agents (the investigator drafts it when it is absent and pushes it with `save_test_plan` and the run ID; when you skip the investigator, you do, in Phase 2 step 1).
 
 ## Effort and cost
 
@@ -233,6 +233,8 @@ When resuming from a phase, read the output files of the earlier phases. The dev
 *Reuse:* fetch the investigation text (`get_artifact(id, 'investigation')`), write it to `.reviews/<id>-plan.md`, skip the investigator and the push (step 4), go to step 5 with the investigation's recommended proposal and note "investigation reused (version N)" in the plan file. *Refresh:* run the investigator as below, giving it the earlier investigation as a starting point (it must still read the code), and push the new one in step 4: it becomes the latest version and supersedes the old. Either way, say which and why (plan hash changed / these files changed by N lines / reused with no relevant change) in the plan file and, when you start the record in step 7, in its `## Decisions` ("Investigation reused" or "Investigation refreshed: …"), so reuse vs refresh is recorded.
 
 1. Read `.reviews/<id>-context.md`. **Skip the investigator** when plan.md and the context already settle the approach (a decided approach, precise acceptance criteria, or an earlier analysis to follow): write `.reviews/<id>-plan.md` yourself with the approach, the files to change and the risk tier, note "investigation skipped" and why, and go to step 6.
+   - **A test plan is left on every run, skipped investigator or not.** If `get_context` has no `testPlan`, draft one yourself before Phase 3, following the investigator's 2b rules (search the repo's end-to-end specs and the board's testing docs; a matrix `Name | Status | Location | Description` with Status `new`, `existing` or `adjusted`; the ```` ```atf-specs ```` block with `specs:` and `grep:`; respect the board's choices) and push it with `save_test_plan(id, content, version: 0, runId)` (or `put_artifact(id, kind: 'test_plan', …, runId)`). Keep a `testPlan` that is present. The same applies when the investigation is reused and predates test plans.
+   - **When nothing needs end-to-end cover** (an internal refactor, agent docs, infra scripts), the test plan is still saved: one line saying why, an empty matrix and `specs: []`, so "no ATF specs needed" is a recorded decision, not a missing document. The change_reviewer checks that it is justified.
 2. Invoke the **investigator** with:
    - plan.md (acceptance criteria, or the bug fields for bugs);
    - the `## Context` section, with the reminder: "Choices in the context bundle are team choices. If they settle an approach, recommend it rather than proposing alternatives";
