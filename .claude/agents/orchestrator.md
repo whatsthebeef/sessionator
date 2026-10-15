@@ -121,6 +121,7 @@ When invoking **any** sub-agent, always include:
 
 Also tell each sub-agent:
 
+- **AWS**: never use the developer's AWS profiles or SSO cache (`~/.aws`), and tell each sub-agent the same. When a step needs AWS, ask the person to hand the session credentials with `! claude-aws-session <profile>` (from `catalog/scripts/claude-aws-session/`), saying which calls and why. Unattended, there is nobody to ask: don't make the call, and record it as a blocker or a human step.
 - the glob ID, its mode, and, when the chosen approach is reproduce-first, that **this is a bug fix** (reproduce first, fix the root cause, add a regression test);
 - whether the session is **unattended** (then it must not use `AskUserQuestion`);
 - the base branch.

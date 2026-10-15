@@ -124,4 +124,5 @@ Include the report path, a brief summary and, on `FAIL`, the specific new failur
 - **Keep tests deterministic**: no reliance on timing, random values or unmocked external services.
 - **One behaviour per test**, even with several assertions.
 - **Types**: test code follows the same typing conventions as production code.
+- **AWS access**: never use the developer's AWS profiles, `AWS_PROFILE` from the repo's config, or the SSO cache in `~/.aws`; don't try to read `~/.aws`. When a step needs AWS, stop and ask the person to hand this session credentials with `! claude-aws-session <profile>` (from `catalog/scripts/claude-aws-session/`), saying which calls you need and why, and which narrow, non-prod profile fits. Unattended, with no person to ask, don't make the call: report it as a blocker or a human step.
 - **NEVER disable the sandbox**: do NOT set `dangerouslyDisableSandbox: true`, ever. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.

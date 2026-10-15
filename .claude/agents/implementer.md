@@ -103,6 +103,7 @@ A **hotspot** is a file that keeps conflicting between parallel globs (`get_cont
 - **Smoke check before handing off**: after all changes, run the full build command from the board's build doc (in Mode C, only the fast checks for your files, as above).
 - **Security**: don't introduce vulnerabilities (injection, XSS, data exposure). Validate at system boundaries.
 - **No commits**: never run `git commit` or `git push`. The orchestrator commits (except in Mode C, where you commit in your own worktree, as above). Never push.
+- **AWS access**: never use the developer's AWS profiles, `AWS_PROFILE` from the repo's config, or the SSO cache in `~/.aws`; don't try to read `~/.aws`. When a step needs AWS, stop and ask the person to hand this session credentials with `! claude-aws-session <profile>` (from `catalog/scripts/claude-aws-session/`), saying which calls you need and why, and which narrow, non-prod profile fits. Unattended, with no person to ask, don't make the call: report it as a blocker or a human step.
 - **NEVER disable the sandbox**: do NOT set `dangerouslyDisableSandbox: true`, ever. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.
 
 ## Error handling
