@@ -107,6 +107,9 @@ PROJECT=""
 INSTANCE=""
 FORCE=false
 NO_SLOP=false
+TELEPORT=auto
+TELEPORT_SESSION=""
+TELEPORT_RUN=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -127,6 +130,8 @@ while [[ $# -gt 0 ]]; do
     --glob=*) GLOB="${1#--glob=}" ;;
     --glob) GLOB="$2"; shift ;;
     --take-over) TAKE_OVER=true ;;
+    --teleport) TELEPORT=on ;;
+    --no-teleport) TELEPORT=off ;;
     --resolve) RESOLVE=true ;;
     --force) FORCE=true ;;
     --new) NEW=true ;;
@@ -172,12 +177,19 @@ Session management:
 
 Slop globs (through the slop CLI; board from SLOP_BOARD in .sstor/sstor.conf):
   --glob <id>             Pick up a glob (slop pick-up), make its worktree on its branch,
-                          slop init + personal settings, launch /run-glob
-  --take-over             With --glob: supersede a queued or active routine run. This is the
-                          usual way in when a glob conflicts with <base> or its run is stuck:
-                          the Claude session merges <base> and asks you about real conflicts
+                          slop init + personal settings, launch /run-glob. Also the way in when
+                          a glob conflicts with <base> or its run is stuck: a queued or standby
+                          machine run is taken over by itself, and you're asked before an active
+                          one is stopped (its unpushed work is lost)
+  --take-over             With --glob: stop an active machine run without asking (for scripts)
+                          With --glob, when the glob's run is a cloud routine you own and its
+                          worktree has no local Claude conversation yet, sstor carries on that
+                          routine's conversation (claude --teleport) instead of a fresh /run-glob
+  --teleport              With --glob: always teleport into the routine's session (fails if the
+                          glob has no cloud session, or someone else owns the routine)
+  --no-teleport           With --glob: never teleport; start a fresh /run-glob
   --resolve               Advanced, rarely needed: resolve a conflict entirely by hand, with no
-                          Claude session. Use --take-over instead unless you know you want this.
+                          Claude session. Use plain --glob instead unless you know you want this.
                           With --glob: merge origin/<base> into the glob's branch, opening your
                           mergetool on any conflicts, then commit (<id>: Merge <base>) and push.
                           Uses the glob's worktree (made if missing); refuses uncommitted changes;
@@ -394,11 +406,44 @@ if $NEW; then
   STATUS=$(json_field status <<<"$CREATED")
   echo "sstor: created $ID ($TYPE, $(json_field category <<<"$CREATED")): $STATUS" >&2
   if [[ "$(json_field routine <<<"$CREATED")" == "true" ]] || [[ "$TYPE" == "sub" ]] || $NEW_ROUTINE; then
-    echo "$ID is with a routine ($STATUS). Watch it on the board, or take it over with: sstor --glob $ID --take-over"
+    echo "$ID is with a routine ($STATUS). Watch it on the board, or take it over with: sstor --glob $ID"
     exit 0
   fi
   GLOB="$ID"
 fi
+
+# Whether --glob carries on the glob's cloud routine conversation (claude --teleport) instead of starting
+# /run-glob: its current run has a cloud session, you own the routine (only the owner can teleport), and,
+# unless --teleport forces it, the glob's worktree has no local Claude conversation yet. Sets
+# TELEPORT_SESSION and TELEPORT_RUN; fails only when --teleport was asked for and can't be done.
+teleport_choice() {
+  local id="$1" glob_json me facts session owner run dir encoded
+  glob_json=$(cd "$REPO_DIR" && slop_cli glob "$id" --json) || return 1
+  me=$(cd "$REPO_DIR" && slop_cli whoami) || return 1
+  facts=$(python3 -c 'import json, sys
+run = (json.load(sys.stdin) or {}).get("currentRun") or {}
+print(run.get("sessionId") or "", run.get("routineOwner") or "", run.get("id") or "", sep="\t")' <<<"$glob_json") || return 1
+  IFS=$'\t' read -r session owner run <<<"$facts"
+  teleport_skip() {
+    if [[ "$TELEPORT" == on ]]; then echo "sstor: can't teleport into $id: $1" >&2; return 1; fi
+    return 0
+  }
+  # The ID is typed into the Claude window, so only a cloud session ID gets through.
+  [[ "$session" =~ ^cse_[A-Za-z0-9]+$ ]] || { teleport_skip "it has no cloud routine session"; return; }
+  if [[ "$(tr 'A-Z' 'a-z' <<<"$owner")" != "$(tr 'A-Z' 'a-z' <<<"$me")" ]]; then
+    teleport_skip "the routine belongs to ${owner:-someone else}; open its session on claude.ai instead"; return
+  fi
+  dir="$HOME/dev/${PROJECT}__worktrees/${PROJECT}-${id}"
+  # Claude keeps a directory's conversations under ~/.claude/projects/<path with every non-alphanumeric as ->.
+  encoded=$(python3 -c 'import re, sys; print(re.sub(r"[^A-Za-z0-9]", "-", sys.argv[1]))' "$dir")
+  if [[ "$TELEPORT" != on ]] && compgen -G "$HOME/.claude/projects/$encoded/*.jsonl" >/dev/null; then
+    echo "sstor: $id already has a local Claude conversation; starting /run-glob (--teleport to carry on the routine's instead)" >&2
+    return 0
+  fi
+  TELEPORT_SESSION="$session"
+  TELEPORT_RUN="$run"
+  echo "sstor: carrying on $id's routine conversation ($session) here" >&2
+}
 
 # --glob picks up the glob (slop waits for its branch) before anything is created locally.
 if [[ -n "$GLOB" ]] && $NO_SLOP; then
@@ -408,6 +453,10 @@ fi
 if [[ -n "$GLOB" ]] && ! $RESOLVE; then
   require_slop
   $NEW || require_base_pushed || exit 1
+  # Read the routine run before picking up: the pick-up supersedes it.
+  if [[ "$TELEPORT" != off ]]; then
+    teleport_choice "$GLOB" || exit 1
+  fi
   PICK_UP_ARGS=("$GLOB")
   $TAKE_OVER && PICK_UP_ARGS+=(--take-over)
   # After --new the glob already has it, and picking up with the same environment changes nothing.
@@ -999,6 +1048,10 @@ WINDOW=1
 tmux new-session -d -s "$SESSION" -c "$START_DIR" -n claude
 if $NO_SLOP; then
   tmux send-keys -t "$SESSION":$WINDOW 'claude --continue' C-m
+elif [[ -n "$GLOB" && -n "$TELEPORT_SESSION" ]]; then
+  # Carry on the routine's own conversation, told that it is now the person's interactive session.
+  HANDOFF="sstor handoff: $(slop_cli whoami 2>/dev/null || echo 'the developer') picked up $GLOB locally and is carrying on this conversation in its worktree (branch $GLOB). From now on you are their interactive session, not a routine: the routine run ${TELEPORT_RUN:-for this glob} is superseded, so stop using its run ID and don't stop because the glob is picked up or a human implementer is recorded. Asking questions is fine. Start with git pull, in case the cloud session pushed after it was last synced, then say where the work stands and what you'd do next."
+  tmux send-keys -t "$SESSION":$WINDOW "claude --teleport $TELEPORT_SESSION $(printf '%q' "$HANDOFF")" C-m
 elif [[ -n "$GLOB" ]]; then
   tmux send-keys -t "$SESSION":$WINDOW "claude '/run-glob $GLOB'" C-m
 elif [[ -n "$REVIEW" ]]; then
