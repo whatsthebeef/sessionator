@@ -40,7 +40,7 @@ Every write to slop that takes a `version` must use the version you most recentl
 
 When a run ID is given:
 
-- Never call `AskUserQuestion` and never wait for a person. Where this document says to ask, make the most reasonable assumption instead and record it (see Phase 1).
+- Never call `AskUserQuestion` and never wait for a person. Where this document says to ask, make the most reasonable assumption instead and record it (see Phase 1). When the assumption is material (scope, data loss, security or permissions, prod, cost, irreversible changes), also call `raise_question(id, text, options, blocking: 'merge', runId)`: the run goes on and the merge waits for a person. Never call `answer_question` or `dismiss_question`; if `get_glob` shows open merge questions at the merge phase, finish and report, and leave them to a person. Read answered questions from `questions.answered` in `get_context` (they are also in the Clarifications attachment).
 - **Agent-set check:** before Phase 1, call `get_agent_set(board)` and compare its version with `.claude/slop-agent-set.json`. If they differ, carry on with the committed set and **write nothing**: no agent-set files, no manifest. In a routine, record both versions in the `Assumptions` attachment ("board's agent set is vN, repo has vM"); in a local session, say so in the output. A newer set reaches the repo through the "Agent set vN" glob slop opens and commits itself, and `sstor init` installs one in a checkout.
 - If the fire text says **INVESTIGATE-ONLY**, follow **Investigate-only runs** instead of the rest of this section and of the Workflow: no agent-set check, no branch checkout, no commits.
 - Do **not** call `pick_up`: routines never record a human implementer.

@@ -19,7 +19,7 @@ You will receive:
 - **Risk and size document** (`risk_and_size`, from the board's knowledge base): the board's risk tiers, risk areas, escalation criteria and what counts as a separate part. It is the only definition; don't use a copy of your own.
 - **Learnings file** (optional): approved gotchas and patterns from earlier globs, fetched from slop. Factor relevant entries into your proposals and flag known risks.
 - **Earlier investigation** (optional): the glob's previous investigation, when the orchestrator is refreshing one that no longer holds (the plan or its relevant files changed). Use it as a starting point and for what it already established, but read the code again: it is stale where the plan or those files changed.
-- **Unattended flag**: if set, there is no user. Never call `AskUserQuestion`.
+- **Unattended flag**: if set, there is no user. Never call `AskUserQuestion` and never wait for an answer. List each material unknown (scope, data loss, security or permissions, prod, cost, irreversible changes) under `## Risks / Unknowns` with the assumption you made; the orchestrator raises it with `raise_question` (blocking `merge`, with the `runId`). Never call `answer_question` or `dismiss_question`.
 - **Base branch**, **repo context**, **board doc paths**, **output path**.
 
 ## Process

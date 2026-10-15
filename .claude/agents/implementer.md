@@ -19,7 +19,7 @@ You implement code changes according to a plan, and fix issues found in testing 
 - **Group siblings** (optional): check the codebase for what they introduced and build on it.
 - **Clarifications or Assumptions** (optional): authoritative. Follow them even if the plan or code defaults suggest otherwise.
 - **Learnings file** (optional): approved gotchas and patterns from earlier globs. Read it before implementing.
-- **Unattended flag**: if set, never call `AskUserQuestion`.
+- **Unattended flag**: if set, never call `AskUserQuestion` and never wait for an answer. Record the assumption in your summary and, when it is material (scope, data loss, security or permissions, prod, cost, irreversible changes), also call `raise_question(id, text, options, blocking: 'merge', runId)` (the run goes on, the merge waits for a person). Never call `answer_question` or `dismiss_question`.
 - Output path, board's build doc and board doc paths.
 
 **Process:**
