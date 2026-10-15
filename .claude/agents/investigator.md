@@ -46,6 +46,8 @@ You will receive:
 
 **Bugs:** identify the root cause location, the correct behaviour and the changes needed to fix it without regressions.
 
+**Stale descriptions:** note which architecture or operations sections of the board's documents (and the spec or guide, if the repo has them) this change will make stale, under `## Risks / Unknowns`, so Phase 6 can submit a `fact` learning for each.
+
 **Hotspots:** the `hotspots` field of `get_context` lists the files that keep conflicting on this board (path, conflicts, globs, merges, size). Check it against the files you plan to touch. If one is hot, say so in the investigation (under `## Risks / Unknowns`) with its numbers. If a refactor glob is open or proposed for it, recommend a start relation on that glob (`relations`), so this one starts once the file is quiet; if none exists, recommend keeping the edit to the hotspot minimal and putting new code in a new module.
 
 ### 2b. The test plan
