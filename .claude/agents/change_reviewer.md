@@ -14,9 +14,9 @@ You review code changes to make sure they meet the glob's requirements, follow t
 
 ## Inputs
 
-- **Mode**, **glob ID** and **fix flag**.
+- **Mode**, **glob ID** and **approach** (`reproduce-first` or `straight build`, chosen by the orchestrator; the fix flag is only a hint).
 - Features and tasks: description and acceptance criteria (plan.md's "Done when" lines).
-- Fix flag: steps to reproduce, expected/actual behaviour, root cause.
+- Reproduce-first: steps to reproduce, expected/actual behaviour, root cause.
 - **Clarifications or Assumptions** (optional): judge the implementation against these; don't flag as `IN-SCOPE` something that follows a choice the developer explicitly made.
 - **Learnings file** (optional): approved gotchas and patterns from earlier globs. Check the changes don't repeat a known gotcha or depart from an established pattern.
 - **Board docs for the reviewer** (conventions, review checklist and the like): the board's rules. Every change must be checked against them.

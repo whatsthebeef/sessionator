@@ -24,7 +24,7 @@ The board is the number in the glob ID (`s1t4` is on board 1). Call `get_board(b
 
 Call `get_glob(id)` before anything else. It returns the status, version, generation, actor, mode, fix flag, work kind, group, environment, implementer, current run and artifact list.
 
-- **The fix flag** sets the flavour of the work: a glob with the fix flag (reproduce first, find the root cause, add a regression test) or any other glob (work from plan.md's acceptance criteria, its "Done when" lines). Slop infers it from the request and plan and a person can correct it; a fix glob is never a super. The work kind (R&D or maintenance) is for the time report only; you never act on it. `category` and `type` in tool results and arguments are old aliases of these (bug is the fix flag, type is the mode) for one release.
+- **The approach** is yours to choose, from the investigation: `reproduce-first` (reproduce, find the root cause, add a regression test) when the work fixes broken behaviour, or `straight build` (work from plan.md's acceptance criteria, its "Done when" lines) otherwise. You choose it in Phase 2 from the investigator's `## Fixing broken behaviour?` answer, and record it (see Phase 2 step 7). The category (bug) and the fix flag are hints only: slop infers the flag from the request and plan and a person can correct it, and you may overrule either way when the investigation says otherwise; a fix glob is never a super. The work kind (R&D or maintenance) is for the time report only; you never act on it. `category` and `type` in tool results and arguments are old aliases (bug is the fix flag, type is the mode) for one release; `feature` is never stored on a new glob (it is a task).
 - **Mode** (machine work) sets how it flows:
   - `sub` or `same`: the full phase pipeline below.
   - `super`: do not run the phases. Follow **Super mode** instead.
@@ -120,7 +120,7 @@ When invoking **any** sub-agent, always include:
 
 Also tell each sub-agent:
 
-- the glob ID, its mode, and for a glob with the fix flag that **this is a bug fix** (reproduce first, fix the root cause, add a regression test);
+- the glob ID, its mode, and, when the chosen approach is reproduce-first, that **this is a bug fix** (reproduce first, fix the root cause, add a regression test);
 - whether the session is **unattended** (then it must not use `AskUserQuestion`);
 - the base branch.
 - the **test plan**: the `## Test plan` section of the context file (path and version), for all four agents (the investigator drafts it when it is absent and pushes it with `save_test_plan` and the run ID; when you skip the investigator, you do, in Phase 2 step 1).
@@ -209,7 +209,7 @@ When resuming from a phase, read the output files of the earlier phases. The dev
 3. Fetch the board knowledge as described under Board knowledge.
 4. Write `.reviews/<id>-context.md` containing:
    - Glob ID, title, mode, fix flag, group, environment.
-   - **plan.md** in full. For features and tasks, its "Done when" lines are the acceptance criteria. With the fix flag, its bug fields (steps to reproduce, expected, actual, environment) are the bug report.
+   - **plan.md** in full. Its "Done when" lines are the acceptance criteria. When the work fixes broken behaviour, its bug fields (steps to reproduce, expected, actual, environment) are the bug report.
    - `## Context` — the rest of the bundle with its citations. Keep the bundle's statement of which source won where sources disagree.
    - `## Test plan` (if `get_context` returned a `testPlan`): its version and full text, including the `atf-specs` block.
    - `## Group Siblings` (if any), e.g. `- s1t3 [reviewing]: Added the export endpoint`. Add: "This glob is one part of a larger group. Use the group to inform architecture but implement only this glob."
@@ -240,7 +240,7 @@ When resuming from a phase, read the output files of the earlier phases. The dev
    - **A test plan is left on every run, skipped investigator or not.** If `get_context` has no `testPlan`, draft one yourself before Phase 3, following the investigator's 2b rules (search the repo's end-to-end specs and the board's testing docs; a matrix `Name | Status | Location | Description` with Status `new`, `existing` or `adjusted`; the ```` ```atf-specs ```` block with `specs:` and `grep:`; respect the board's choices) and push it with `save_test_plan(id, content, version: 0, runId)` (or `put_artifact(id, kind: 'test_plan', …, runId)`). Keep a `testPlan` that is present. The same applies when the investigation is reused and predates test plans.
    - **When nothing needs end-to-end cover** (an internal refactor, agent docs, infra scripts), the test plan is still saved: one line saying why, an empty matrix and `specs: []`, so "no ATF specs needed" is a recorded decision, not a missing document. The change_reviewer checks that it is justified.
 2. Invoke the **investigator** with:
-   - plan.md (acceptance criteria, or the bug fields with the fix flag);
+   - plan.md (acceptance criteria, or the bug fields when the work fixes broken behaviour), and the category and fix flag as hints only: it decides from the plan and code whether the work fixes broken behaviour;
    - the `## Context` section, with the reminder: "Choices in the context bundle are team choices. If they settle an approach, recommend it rather than proposing alternatives";
    - the group siblings, so it builds on what exists and avoids duplication;
    - clarifications or assumptions, verbatim (they override conflicting assumptions);
@@ -252,11 +252,12 @@ When resuming from a phase, read the output files of the earlier phases. The dev
    - the reminder: "If the work is big enough for several agents to build parts of it at the same time, cut it under `## Workstreams` in the plan file (names, goals, files, plan shares, needs; each shared file owned by W0 or exactly one workstream). Omit it for a small glob." Also pass `size.forecast` from `get_context` when present.
 3. The investigator writes its proposals to `.reviews/<id>-plan.md`.
 4. **Push the investigation:** check the plan file ends with an `investigation` block (the investigator's last section). Save the whole plan file's text as the glob's investigation: `put_artifact(id, kind: 'investigation', content: <plan file>, runId if unattended, agentSetVersion)`, or the upload route for a large file (see Uploading artifacts). If the reply has a `validation` note, the block was stored as plain text: ask the investigator to fix the block (once) and push again. The alternatives stay in the stored text; this is the only part of Phase 2 slop sees as data. When Phase 2 was skipped, push nothing.
-5. Choose a proposal:
+5. Choose the approach and a proposal:
+   - **Approach.** Read the investigation's `## Fixing broken behaviour?` answer (`Yes` is `reproduce-first`, `No` is `straight build`). When the investigator is skipped or silent, decide from plan.md yourself; the category (bug) and the fix flag are then your starting hint. Whatever the category or flag says, the investigation wins when they disagree.
    - **Interactive:** summarise each proposal (name, one-line summary, complexity, key trade-off), state the recommendation and ask the developer to choose or give further instructions.
    - **Unattended:** take the recommended proposal.
 6. Append `## Selected Proposal` to the plan file with the choice and any instructions. The investigator's alternatives stay in this local plan file; they are not pushed.
-7. **Start the record** in `.reviews/<id>-record.md` from the chosen proposal: `## Approach` (the choice and why), `## Decisions` (the choices already made, with rejected alternatives), the other sections empty, and push it: `put_artifact(id, kind: 'implementation_plan', content: <record file>)`, with the run ID if unattended. Do this as soon as the choice is made, so a restarted run or a person can resume from it.
+7. **Start the record** in `.reviews/<id>-record.md` from the chosen proposal: `## Approach` (the choice and why), `## Decisions` (the choices already made, with rejected alternatives, starting with the line `Approach: reproduce-first | straight build, from the investigation (<one line why>); category <c>, fix flag <yes/no>`, or `from plan.md (investigation skipped)`), the other sections empty, and push it: `put_artifact(id, kind: 'implementation_plan', content: <record file>)`, with the run ID if unattended. Do this as soon as the choice is made, so a restarted run or a person can resume from it.
 8. **Deviations:** whenever a later phase departs from the selected proposal or plan.md (a different approach, an extra change, something dropped), add a dated line to the record's `## Deviations` saying what changed and why, and push the record again with `put_artifact`.
 
 ### Phase 2b: Fan out or not
@@ -275,8 +276,8 @@ Between Phase 2 and Phase 3, read the plan file's `## Workstreams` (and the inve
 **Without fan-out:**
 
 1. Read the context file, the plan file (with the selected proposal) and the record so far.
-2. Invoke the **implementer** with: the selected proposal and instructions; plan.md's acceptance criteria (or bug fields, with the fix flag, stating this is a bug fix and the root cause must be fixed, not the symptom); the context section; group siblings; clarifications or assumptions verbatim; the learnings file path; the board's build doc and relevant board doc paths; the output path `.reviews/<id>-implementation.md`.
-3. The implementer writes its summary (files changed, root cause for bugs, choices made).
+2. Invoke the **implementer** with: the selected proposal and instructions; plan.md's acceptance criteria (or bug fields, when the chosen approach is reproduce-first, stating this is a bug fix and the root cause must be fixed, not the symptom); the context section; group siblings; clarifications or assumptions verbatim; the learnings file path; the board's build doc and relevant board doc paths; the output path `.reviews/<id>-implementation.md`.
+3. The implementer writes its summary (files changed, root cause for a reproduce-first approach, choices made).
 4. **Update the record:** add the implementer's choices (with rejected alternatives and trade-offs), deviations and traps to `.reviews/<id>-record.md` (`## Decisions`, `## Deviations`, `## Traps`). Condense; don't paste the summary.
 
 **With fan-out (workstreams):**
@@ -306,7 +307,7 @@ Between Phase 2 and Phase 3, read the plan file's `## Workstreams` (and the inve
 Skip this phase for **low** risk work when the implementer added or updated tests for the change and recorded passing fast checks; say so in the review document.
 
 1. Read the context and implementation files.
-2. Invoke the **tester** with: plan.md's acceptance criteria (or, with the fix flag, the bug fields, stating that a regression test must reproduce the original bug and verify the fix); clarifications or assumptions verbatim; the learnings file path; the implementation summary; the board's build doc and relevant board doc paths; the report path `.reviews/<id>-tests.md`; the server URL if any.
+2. Invoke the **tester** with: plan.md's acceptance criteria (or, when the chosen approach is reproduce-first, the bug fields, stating that a regression test must reproduce the original bug and verify the fix); clarifications or assumptions verbatim; the learnings file path; the implementation summary; the board's build doc and relevant board doc paths; the report path `.reviews/<id>-tests.md`; the server URL if any.
 3. The tester returns `PASS` or `FAIL`.
 4. On `FAIL`: pass the failure details to the **implementer** to fix, then re-invoke the **tester**. If it still fails after one fix attempt, note the failures and continue.
 5. Add what the tester found that the next person should know (a test that failed because of how the code was written, an environment trap) to the record's `## Traps`.
@@ -315,7 +316,7 @@ Skip this phase for **low** risk work when the implementer added or updated test
 
 The maximum depends on the risk tier: **high** 3 rounds, **normal** 2, **low** 1. For each round:
 
-1. Invoke the **change_reviewer** in standard mode with: plan.md's acceptance criteria (or bug fields with the fix flag, stating it must verify the root cause is addressed and a regression test exists); clarifications or assumptions verbatim; the learnings file path; the round number and max rounds; the review document path `.reviews/<id>-review.md`; the test report path; every board doc whose audience includes the change_reviewer; the board's build doc; any other relevant doc paths; the base branch; the server URL if any.
+1. Invoke the **change_reviewer** in standard mode with: plan.md's acceptance criteria (or bug fields, when the chosen approach is reproduce-first, stating it must verify the root cause is addressed and a regression test exists); clarifications or assumptions verbatim; the learnings file path; the round number and max rounds; the review document path `.reviews/<id>-review.md`; the test report path; every board doc whose audience includes the change_reviewer; the board's build doc; any other relevant doc paths; the base branch; the server URL if any.
 2. The reviewer reviews the whole integrated diff on the branch against `origin/<base>` (after `git fetch origin <base>`), classifies each finding as `IN-SCOPE` or `SUGGESTION`, appends to the review document and returns its verdict.
 3. If the reviewer's verdict names an escalation, or in-scope items are still open after the last round, call `escalate_to_same` (see Escalating a sub). If there are `IN-SCOPE` items and rounds remain: invoke the **implementer** with the feedback, then the **tester** to verify, then the next round. With workstreams: few findings, or findings in one workstream's files, go to one implementer; many findings across workstreams are fanned out the same way as Phase 3 (one implementer per workstream, in worktrees, integrated in order). Phases 4 to 6 run once on the integrated branch, not per workstream.
 4. Otherwise the cycle ends.

@@ -17,7 +17,7 @@ Work on a slop glob, or review existing changes.
 /run-glob --review <id|commit-sha>
 ```
 
-- `<id>` — the glob ID (e.g. `s1t4`). Its category (feature, task, bug) and slop type (sub, same, super) come from slop; there are no separate task and bug flags.
+- `<id>` — the glob ID (e.g. `s1t4`). Its slop type (sub, same, super) and category hint (task, bug) come from slop; the orchestrator chooses reproduce-first or straight build from the investigation, so there are no separate task and bug flags.
 - `--from <phase>` — resume from phase 1–6. Default is 1.
 - `--run <runId>` — run **unattended** as a routine run. Routines always pass this; developers never do.
 - An unattended run whose fire text says **INVESTIGATE-ONLY** is on a glob still in Planning (no branch): it follows the orchestrator's "Investigate-only runs" section and stops after pushing the investigation.
