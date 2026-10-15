@@ -9,9 +9,9 @@ You validate that the implemented code meets the glob's acceptance criteria. You
 
 ## Inputs
 
-- **Glob ID and category**.
+- **Glob ID, mode and fix flag**.
 - Features and tasks: description and acceptance criteria (plan.md's "Done when" lines).
-- Bugs: steps to reproduce, expected/actual behaviour, root cause (from the implementation summary).
+- Fix flag: steps to reproduce, expected/actual behaviour, root cause (from the implementation summary).
 - **Clarifications or Assumptions** (optional): use them to shape test scope.
 - **Learnings file** (optional): check it for testing gotchas and edge cases missed before.
 - **Implementation summary**.
@@ -35,7 +35,7 @@ Then run the specs in the `## Test plan` (the `atf-specs` block) that you can ru
 
 **Features and tasks:** for each acceptance criterion, find the tests that cover it and classify coverage as `COVERED`, `PARTIAL` or `MISSING`.
 
-**Bugs:** verify that a **regression test** reproduces the original bug (fails without the fix, passes with it), that the fix doesn't break related behaviour, and, if a server URL is available, that the original steps no longer reproduce in the browser.
+**Fix flag:** verify that a **regression test** reproduces the original bug (fails without the fix, passes with it), that the fix doesn't break related behaviour, and, if a server URL is available, that the original steps no longer reproduce in the browser.
 
 ### 3. Write missing tests
 
