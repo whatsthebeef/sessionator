@@ -137,6 +137,10 @@ Also check how each step is written; each of these is an `IN-SCOPE` finding:
 - a review, an approval or anything else due before the merge filed as a step;
 - optional setup, or setup that only applies to other boards, filed as a blocking step;
 - a fact that doesn't hold: check each migration number, command, script path and setting against the tree.
+- a step that is a sequence of commands with no script: its `script: <path>` line is missing, or the file is not in the diff or the tree;
+- a script that doesn't follow the shape (`catalog/scripts/step-template.sh`): no header saying what it changes and which permissions and login it needs, no preflight, no summary before a change, no y/N question (with `--yes`) before a change, not safe to re-run, or no final check; or one that prints a secret; run `bash -n` and `shellcheck` on it and report a failure;
+- a script placed against the rule: another board's script in this repo, a generic one outside `catalog/scripts/`, or a one-off outside `scripts/rollout/<glob-id>-<slug>.sh`;
+- a step a person runs in a terminal without a `**Permissions:**` line naming the exact login and rights (the account, region or repository role), or whose Permissions don't match what the script's header and preflight check.
 
 ### 11. Check the test plan
 
