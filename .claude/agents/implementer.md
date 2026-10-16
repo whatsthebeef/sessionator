@@ -114,3 +114,7 @@ A **hotspot** is a file that keeps conflicting between parallel globs (`get_cont
 - If a planned step is ambiguous, implement the most reasonable interpretation and note the assumption in the summary.
 - If a test you didn't change starts failing, check whether your change caused it. If so, fix it; if not, note it.
 - If a blocker prevents implementation, stop and return a clear description of it.
+
+## Questions, steps and decisions
+
+A question (`raise_question`) is only for a choice within this glob's own work, with 2-4 options. A command or check a person must run is a human step, never a question: write it under the rollout or human steps. A choice that matters beyond this glob (a policy, a convention other globs follow) is a decision glob, not a question. The orchestrator files these from your report, so name each one and its kind.

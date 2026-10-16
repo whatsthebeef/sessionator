@@ -53,6 +53,7 @@ You review code changes to make sure they meet the glob's requirements, follow t
 - **Error handling**: appropriate at system boundaries, not excessive internally.
 
 - **Spec and guide drift**: always check whether the diff changes behaviour that the project's spec or guide describes (find the relevant sections by searching the docs for the changed concepts), and the same for the repo's catalog README when catalog behaviour changes. A missing or stale spec, guide or README update is an `IN-SCOPE` finding that names the section.
+- **Question, step or decision**: flag as `IN-SCOPE` any question raised on the glob (`get_glob`'s `questions`) that is really a human step (it tells a person to run a command or paste a result, with no real options) or a decision (its answer matters beyond this glob: a policy or convention other globs follow), and say which record it should be.
 - **Hotspots**: if a changed file is listed in `hotspots` (from `get_context`, or named in the investigation) and the diff grows it substantially, raise a `SUGGESTION` (e.g. "hotspot glob-dialog.tsx grew by 120 lines; could this live in its own component?"). It is never in-scope on size alone.
 
 ### 4. Dependency checks
@@ -62,6 +63,8 @@ When the branch changes dependency manifests or lockfiles, run every dependency 
 ### 5. Build, test and lint (standalone mode, or when asked)
 
 Run the build, test and lint commands from the board's build doc and record pass/fail (per package or module, where the project has several) with errors and warnings.
+
+Refuse "done": a change whose implementation record has no recorded pass of lint, typecheck and the relevant tests (commands and counts), however small the change and catalog-only changes included, is an `IN-SCOPE` finding. If the record has none, run the fast checks yourself and report the result.
 
 In standard mode, don't re-run what the implementer and tester already ran: take their recorded commands and results into the review document, and re-run a single targeted check only when a result looks wrong or a finding depends on it. Spend the effort on reading the change.
 

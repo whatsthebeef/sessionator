@@ -148,3 +148,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
 - **Don't over-engineer**: plan only what this glob needs. No speculative abstractions.
 - **Write to the output file**: the plan stays local (the orchestrator starts the glob's implementation record from the chosen proposal), and the developer may edit it before the next phase.
 - **NEVER disable the sandbox**: do NOT set `dangerouslyDisableSandbox: true`, ever. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.
+
+## Questions, steps and decisions
+
+A question (`raise_question`) is only for a choice within this glob's own work, with 2-4 options. A command or check a person must run is a human step, never a question: write it under the rollout or human steps. A choice that matters beyond this glob (a policy, a convention other globs follow) is a decision glob, not a question. The orchestrator files these from your report, so name each one and its kind.
