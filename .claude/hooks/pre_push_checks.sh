@@ -39,11 +39,17 @@ else
     [[ -f "$d/tsconfig.json" ]] && pkgs["$d"]=1
   done
   for p in "${!pkgs[@]}"; do run npx tsc -p "$p/tsconfig.json" --noEmit; done
+  # Group the changed test files per package and run vitest once per package. Not in a subshell: `run` sets fail=1.
+  declare -A tests=()
   for f in "${code[@]}"; do
     [[ "$f" =~ \.(test|spec)\.(ts|tsx|js|jsx)$ ]] || continue
     d=$(dirname "$f")
     while [[ "$d" != "." && ! -f "$d/package.json" ]]; do d=$(dirname "$d"); done
-    (cd "$d" && run npx vitest run "${f#"$d"/}")
+    tests["$d"]+="${f#"$d"/}"$'\n'
+  done
+  for d in "${!tests[@]}"; do
+    mapfile -t files < <(printf '%s' "${tests[$d]}")
+    pushd "$d" >/dev/null && { run npx vitest run "${files[@]}"; popd >/dev/null; }
   done
 fi
 
