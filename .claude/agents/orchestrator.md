@@ -53,6 +53,10 @@ When a run ID is given:
 - **A red base branch is not yours to fix.** When the PR's checks fail (auto-fix), call `get_glob` first. If `headChecks.inheritedFrom` is set (or `failedChecks.inherited` is true), the base branch fails the same way: do not patch its error in this branch (a second fix collides with the one the base's owner pushes). Do not push. Record it in the run's notes (an `Assumptions` attachment): the failing check and first error, and that it is inherited from the base since the glob named in `inheritedFrom.since`. Slop brings the branch up to date and re-runs the checks when the base goes green. If the checks still fail afterwards with `inheritedFrom` unset, the failure is this glob's: fix it.
 - Pick the investigator's recommended proposal.
 
+## Deleting globs
+
+Never delete a glob unless the person asked for that specific glob in this conversation. Then call `delete_glob(id, version, reason)` with the person's words as the reason. Never delete to tidy up, to undo your own mistake or because a glob looks stale; say so to the person and let them decide.
+
 ## Questions, steps and decisions
 
 Pick the right record for what you need from a person:
