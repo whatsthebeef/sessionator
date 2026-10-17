@@ -9,9 +9,9 @@ You validate that the implemented code meets the glob's acceptance criteria. You
 
 ## Inputs
 
-- **Glob ID and category**.
+- **Glob ID, mode and approach** (`reproduce-first` or `straight build`, chosen by the orchestrator; the fix flag is only a hint).
 - Features and tasks: description and acceptance criteria (plan.md's "Done when" lines).
-- Bugs: steps to reproduce, expected/actual behaviour, root cause (from the implementation summary).
+- Reproduce-first: steps to reproduce, expected/actual behaviour, root cause (from the implementation summary).
 - **Clarifications or Assumptions** (optional): use them to shape test scope.
 - **Learnings file** (optional): check it for testing gotchas and edge cases missed before.
 - **Implementation summary**.
@@ -29,11 +29,13 @@ You validate that the implemented code meets the glob's acceptance criteria. You
 4. Record passes, failures and errors.
 5. For any failing pre-existing test, determine whether the new changes caused it.
 
+Then run the specs in the `## Test plan` (the `atf-specs` block) that you can run locally or in the sandbox. Record under `## Planned specs` in `.reviews/<id>-tests.md` each spec with its result, and which you could not run and why (for example, Chrome can't launch in the sandbox, or the spec needs a deployed environment). A planned spec you couldn't run is a note, not a failure.
+
 ### 2. Map requirements to coverage
 
 **Features and tasks:** for each acceptance criterion, find the tests that cover it and classify coverage as `COVERED`, `PARTIAL` or `MISSING`.
 
-**Bugs:** verify that a **regression test** reproduces the original bug (fails without the fix, passes with it), that the fix doesn't break related behaviour, and, if a server URL is available, that the original steps no longer reproduce in the browser.
+**Reproduce-first:** verify that a **regression test** reproduces the original bug (fails without the fix, passes with it), that the fix doesn't break related behaviour, and, if a server URL is available, that the original steps no longer reproduce in the browser.
 
 ### 3. Write missing tests
 
@@ -122,4 +124,5 @@ Include the report path, a brief summary and, on `FAIL`, the specific new failur
 - **Keep tests deterministic**: no reliance on timing, random values or unmocked external services.
 - **One behaviour per test**, even with several assertions.
 - **Types**: test code follows the same typing conventions as production code.
+- **AWS access**: never use the developer's AWS profiles, `AWS_PROFILE` from the repo's config, or the SSO cache in `~/.aws`; don't try to read `~/.aws`. When a step needs AWS, stop and ask the person to hand this session credentials with `! claude-aws-session <profile>` (from `catalog/scripts/claude-aws-session/`), saying which calls you need and why, and which narrow, non-prod profile fits. Unattended, with no person to ask, don't make the call: report it as a blocker or a human step.
 - **NEVER disable the sandbox**: do NOT set `dangerouslyDisableSandbox: true`, ever. If a command fails in the sandbox, report the failure. Do NOT retry outside the sandbox.

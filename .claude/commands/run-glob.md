@@ -17,7 +17,7 @@ Work on a slop glob, or review existing changes.
 /run-glob --review <id|commit-sha>
 ```
 
-- `<id>` — the glob ID (e.g. `s1t4`). Its category (feature, task, bug) and slop type (sub, same, super) come from slop; there are no separate task and bug flags.
+- `<id>` — the glob ID (e.g. `s1t4`). Its slop type (sub, same, super) and category hint (task, bug) come from slop; the orchestrator chooses reproduce-first or straight build from the investigation, so there are no separate task and bug flags.
 - `--from <phase>` — resume from phase 1–6. Default is 1.
 - `--run <runId>` — run **unattended** as a routine run. Routines always pass this; developers never do.
 - An unattended run whose fire text says **INVESTIGATE-ONLY** is on a glob still in Planning (no branch): it follows the orchestrator's "Investigate-only runs" section and stops after pushing the investigation.
@@ -49,11 +49,11 @@ Work on a slop glob, or review existing changes.
 |-------|-------------|-------------|
 | 1 | Fetch the glob's context from slop, clarify | `.reviews/<id>-context.md` |
 | 2 | Investigate, choose a proposal, start and push the implementation record | `.reviews/<id>-plan.md`, `.reviews/<id>-record.md` |
-| 3 | Implement | `.reviews/<id>-implementation.md` |
+| 3 | Implement (a big glob fans out into parallel workstreams in worktrees, integrated on the glob's branch) | `.reviews/<id>-implementation.md` (`.reviews/<id>-implementation-<workstream>.md` per workstream) |
 | 4 | Write and run tests | `.reviews/<id>-tests.md` |
 | 5 | Review cycle | `.reviews/<id>-review.md` |
 | 6 | Complete the record, commit, push the record, local review and learnings, push the branch, mark the PR ready | — |
 
 ### Restarting from a phase
 
-Edit the output file of the previous phase, then `/run-glob --from <phase> <id>`.
+Edit the output file of the previous phase, then `/run-glob --from <phase> <id>`. `--from 3` on a glob with workstreams reads the `## Workstreams` table in the implementation record and runs only the workstreams that aren't done.
