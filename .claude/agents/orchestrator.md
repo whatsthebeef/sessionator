@@ -89,6 +89,7 @@ Anything a person must do (a rollout, a setting, an install, a decision) is reco
 - **A glob with rollout steps is merged with Merge and continue.** Review passing doesn't end the glob: it merges and stays open ("rolling out"), and its rollout steps are the checklist a person runs from master. In a session on a merged, open glob (Pick up, or `sstor --glob <id>`), call `get_glob` to see which steps are still due, and help the person work through them in order. Never run a step that changes paid infrastructure or IAM yourself.
 - **A failed step starts the glob's next generation.** When a step's run fails, the person tells you in the session or presses "It failed" in the glob view; you report it with `fail_human_step` (the glob id, step id and the error as a note; the note is masked, but warn people to strip credentials from pasted output first). For a rollout step of a merged glob, slop then starts the glob's next generation: a new run on a fresh branch from master with the failure as in-scope feedback. Any other step stays open and slop leaves a card suggestion ("this step failed: is there a fix glob?"); create that fix glob with `holds` on the failed glob. In that run read the `Rollout step failed (generation N)` attachment: `get_context` returns it in full by default (no `include` needed), under `attachments`, fix the cause (the step, its script or its pre-checks) and write the `## Rollout` again; the step is due again after the merge. Work that belongs to another board or repo goes in a separate glob with a relation.
 - **Changes made outside the flow.** If the developer did something off-process (tried a step on the branch before the merge, changed something by hand in AWS), they tell you in the glob's session and you bring the steps up to date with the step tools: `complete_human_step` with a `note` saying what was done and where, `dismiss_human_step` with a reason for a step that no longer applies, `add_human_step` for new work; an edit is a dismiss plus an add. Check the state with read-only commands where you can, and never run steps that change paid infrastructure or IAM to catch up.
+- `mark_ready` returns `stepCheck` from a fresh reader (a model playing an admin with a fresh terminal) when the glob has steps; read it, fix the steps in the record if the stuck points are real, and don't treat it as a gate.
 - Your final report lists the test plan (its version and specs, and any planned spec the tester couldn't run).
 - Your final report lists the human steps: each one's text, who and when (before or after the merge), and whether it blocks the sign-off. Write each as it will be run (the full commands in order, where to run them, the sign-in), so the person sees the complete step before merging. It also lists each action glob you created, with its ID, board and any relation.
 
@@ -235,6 +236,19 @@ An *Investigate* action (or slop itself, for a glob intake flagged big) fires a 
 3. Run Phase 2 steps 1–4: the investigator writes `.reviews/<id>-plan.md` ending with the `investigation` block (plan hash and base commit as in step 2), and you push it with `put_artifact(id, kind: 'investigation', …, runId, agentSetVersion)`. **Do not skip the investigator**, even when plan.md looks settled: the investigation is the product of this run. If the glob already has an investigation that is still current (Phase 2, *Reuse or refresh*), push nothing and say so.
 4. A reply without a `validation` note ends the run: slop closes it when the investigation is stored, and the glob stays in Planning. If the block did not validate, have it fixed once and push again; if it still does not validate, call `report_failure(id, reason, runId)`.
 5. Skip Phases 3–6, the record (nothing was built) and the Auto-fix section. Finish with a short summary: the investigation's risk tier, files, parts and whether it needs a human.
+
+## Triage runs
+
+A run with purpose `triage` means slop started you because a failure was left with nobody working on it: failed checks of this glob's own change, a conflict with `<base>`, or a failed run. The fire text says which and why; `get_context` returns a `triage` section with the failure output and the glob's own history (earlier runs, what they pushed, how they ended, earlier triage decisions). Don't run the phases from the start.
+
+1. Call `get_glob` and `get_context` with the run ID, and read the failure and the history. Decide the remedy from the outcome, not from a fixed rule:
+   - **fix it on the branch** and push (Phases 3-4 as far as the fix needs; the pre-push check applies), then follow Auto-fix below;
+   - **judge it not this glob's fault** (inherited from `<base>`, or flaky) with evidence, and re-run the checks: `decide_triage` with `rerun_checks` and the evidence as `why`;
+   - **ask a blocking question** (`raise_question`) when only a person can say what is right;
+   - **hand over** with a short brief: `decide_triage` with `handover`.
+2. Record the choice and why with `decide_triage(id, runId, remedy, why)` and under `## Decisions` in the implementation record. The history says what earlier rounds tried: don't repeat what failed.
+3. Hard limits: slop starts at most 2 rounds per failure and then hands it to a person; never merge on red checks; never touch paid infrastructure or credentials; never force-push. If you cannot finish, call `report_failure(id, reason, runId)`.
+4. A rollout step that failed is not triaged: its next generation starts by itself. In that run you may fix it on the generation's branch, or report and ask.
 
 ## Workflow
 
