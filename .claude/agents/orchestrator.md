@@ -240,6 +240,7 @@ Run all phases in order without pausing, except where a phase says to ask the de
 
 1. Call `get_context(id)`: a cited bundle of plan.md, attachments, active choices, linked meeting excerpts, related past globs, current test results and relevant conventions.
    - It carries plan.md, the implementation record (once one exists) and any Clarifications or Assumptions attachments in full, and only **lists** the other artifacts (local reviews, other attachments). Don't fetch them by default.
+   - `lessons` (when present) are short notes from earlier globs on related ground: what happened, the likely cause, what to do differently. Pass them to the investigator and implementer as hints about what to check; they are unapproved and transient, so never treat one as a rule, and don't restate one in the record.
    - **Resuming** (`--from`) **or revisiting** a glob with work on it: save the record as `.reviews/<id>-record.md` and carry on from it. Fetch other artifacts you need (`attachment:<label>`, `local_review`) with `get_context(id, include: [...])` or `get_artifact`, and add them to the context file.
 2. If the glob has a group, call `list_globs(board, group)` for its siblings (key, title, status, mode).
 3. Fetch the board knowledge (see Board knowledge).
