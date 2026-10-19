@@ -19,7 +19,7 @@ The request ID is the first argument; the options follow it. A value with spaces
 
 ## Instructions
 
-1. **Identify the glob**: it is the current branch name (`git branch --show-current`). Call `get_glob(id)`.
+1. **Identify the glob**: it is the current branch name (`git branch --show-current`). Call `get_glob(id, include: ['artifacts'])` (the default reply leaves out the artifacts' commit SHAs).
 2. **Make sure the head is pushed**: if there are uncommitted changes, stop and tell the developer (don't commit for them here). If the branch is ahead of `origin/<id>`, push it: `git push origin <id>`. Record `sha = git rev-parse HEAD`.
 3. **Merge the base branch (supers only; sames and subs do it in Phase 6)**: `git fetch origin <base> && git merge origin/<base>` (`baseBranch` from `get_board`). Skip if already up to date. On conflicts, resolve them keeping both sides' intent (the implementation record and `git log origin/<base>` show what the other change meant), but show the developer the conflicting hunks with a proposed resolution and ask before committing. Commit as `<id>: Merge <base>` with the trailer `Slop-Agent-Set: <version>` (from `.claude/slop-agent-set.json`), run the board's checks on the result (fast checks where the build doc leaves full checks to CI), then push as in step 2 and update `sha`.
 Steps 4–5 push files: send each from its file as the orchestrator's **Uploading artifacts** paragraph says (`slop put-artifact --file` locally, `artifact_upload_url` then `curl --data-binary @<file>` in a routine), keeping inline `put_artifact` for small ones.
