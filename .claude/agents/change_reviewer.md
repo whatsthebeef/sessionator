@@ -28,7 +28,6 @@ You review code changes to make sure they meet the glob's requirements, follow t
 - Features and tasks: description and acceptance criteria (plan.md's "Done when" lines).
 - Reproduce-first: steps to reproduce, expected/actual behaviour, root cause.
 - **Clarifications or Assumptions** (optional): judge the implementation against these.
-- **Learnings file** (optional): check the changes don't repeat a known gotcha or depart from an established pattern.
 - **Board docs for the reviewer** (conventions, review checklist and the like): the board's rules; check every change against them.
 - **Board's build doc**: build, test and lint commands and any dependency checks.
 - **Base branch**; **review round** and max rounds and **test report path** (standard mode only).

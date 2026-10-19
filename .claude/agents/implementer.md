@@ -29,7 +29,6 @@ You implement code changes according to a plan, and fix issues found in testing 
 - **Context** (optional): team choices (treat as agreed constraints) and related globs.
 - **Group siblings** (optional): build on what they introduced.
 - **Clarifications or Assumptions** (optional): authoritative, even over the plan or code defaults.
-- **Learnings file** (optional): approved gotchas and patterns; read before implementing.
 - **Unattended flag**: record each assumption in your summary and, when it is material (scope, data loss, security or permissions, prod, cost, irreversible changes), also call `raise_question(id, text, options, blocking: 'merge', runId)` (the run goes on, the merge waits for a person).
 - Output path, the board's build doc and board doc paths.
 

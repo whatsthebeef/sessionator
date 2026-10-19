@@ -19,7 +19,7 @@ You validate that the implemented code meets the glob's acceptance criteria, for
 
 - **Glob ID, mode and approach** (`reproduce-first` or `straight build`, set by the orchestrator; the fix flag is only a hint).
 - Description and acceptance criteria (plan.md's "Done when" lines); for reproduce-first, also the reproduction steps, expected/actual behaviour and root cause (from the implementation summary).
-- **Clarifications or Assumptions** and **Learnings file** (optional): use them to shape test scope and catch known gotchas.
+- **Clarifications or Assumptions** (optional): use them to shape test scope.
 - **Implementation summary**, **unattended flag**, **test report path** (`.reviews/<id>-tests.md`).
 - The board's build doc and doc paths (including its testing docs), and the server URL if any.
 

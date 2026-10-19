@@ -17,7 +17,7 @@ Some knowledge only lives in the code: how to build and test it, the conventions
 ## Instructions
 
 1. **Board**: use the argument if given; otherwise read `board` from `.claude/slop-agent-set.json`. Read `version` from the same file and pass it as `agentSetVersion` on every submission. If the current branch (`git branch --show-current`) is a glob ID on that board (`s<board>t<n>`, `f` or `b`), pass it as `sourceGlobId`; otherwise leave `sourceGlobId` out.
-2. **What exists**: call `get_conventions(board)` first. Note every document's name, area, description and audience, and the approved learnings. Fetch any document whose coverage is unclear from its description with `get_conventions(board, name)`.
+2. **What exists**: call `get_conventions(board)` first. Note every document's name, area, description and audience. Fetch any document whose coverage is unclear from its description with `get_conventions(board, name)`.
 3. **Read the repo**, without changing anything:
    - `README*`, `CONTRIBUTING*`, `docs/` and any existing agent or editor instructions (`CLAUDE.md`, `AGENTS.md`, `.cursor/`, `.github/copilot-instructions.md`);
    - the task runner and package or build files (`package.json` scripts and workspaces, `Makefile`, `justfile`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `build.gradle`, `docker-compose*`, `scripts/`);
