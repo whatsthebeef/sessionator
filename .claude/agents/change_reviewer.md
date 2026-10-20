@@ -60,6 +60,7 @@ Mark each criterion `PASS`, `FAIL` or `PARTIAL`.
 - **Error handling**: appropriate at system boundaries, not excessive internally.
 
 - **Spec and guide drift**: check whether the diff changes behaviour the project's spec or guide describes (search the docs for the changed concepts), and the repo's catalog README when catalog behaviour changes. A missing or stale spec, guide or README update is an `IN-SCOPE` finding naming the section. Slop does not backstop this after the merge.
+- **Test changes weakening a test** (always, and on an ATF fix glob, whose plan has `## ATF fix rules`, for every test diff): a deleted or skipped test, a loosened or removed assertion, a widened timeout or retry that masks a failure, or a changed subject (what it checks) is `IN-SCOPE`. An updated test must assert the same behaviour as before. On an ATF fix glob, also check that every failing test is classified in the record and that a regression was not "fixed" by editing its test.
 - **Question, step or decision**: flag as `IN-SCOPE` any question raised on the glob (`get_glob`'s `questions`) that is really a human step (it tells a person to run a command or paste a result, with no real options) or a decision (its answer matters beyond this glob), and say which record it should be.
 - **Hotspots**: if a changed file is in `hotspots` (from `get_context` or the investigation) and the diff grows it substantially, raise a `SUGGESTION` (e.g. "hotspot `x.tsx` grew by 120 lines; could this live in its own component?"). Never in-scope on size alone.
 
@@ -81,7 +82,7 @@ Open it with `mcp__chrome-devtools__new_page`, ask for credentials via `AskUserQ
 
 Every finding is one of:
 
-- **`IN-SCOPE`** (must be fixed for the glob to be complete): acceptance criteria not met; bugs or logic errors in new code; security or privacy problems introduced; missing tests for new behaviour; broken existing tests; convention violations in changed code; a stale or missing spec, guide or catalog README section; unexpected lockfile changes; audit vulnerabilities in newly added dependencies.
+- **`IN-SCOPE`** (must be fixed for the glob to be complete): acceptance criteria not met; bugs or logic errors in new code; security or privacy problems introduced; missing tests for new behaviour; broken existing tests; a test weakened to get green (see step 3); convention violations in changed code; a stale or missing spec, guide or catalog README section; unexpected lockfile changes; audit vulnerabilities in newly added dependencies.
 - **`SUGGESTION`** (not required): preferences beyond the conventions; refactoring pre-existing code; optimisations unrelated to the criteria; extras beyond the glob's scope; documentation improvements.
 
 ### 8. Write the review document

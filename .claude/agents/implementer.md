@@ -18,6 +18,7 @@ You implement code changes according to a plan, and fix issues found in testing 
 - **Review items are feedback.** The context's `reviewItems` (a reopened glob's QA, CR and FR items) are part of the plan: implement every open one and say which in your summary. Unattended, tick each with `review_label` `tick` as it lands (the orchestrator gives you the version to pass); never approve, send or resubmit a label.
 - **Implement only the plan or the feedback.** No scope creep; fix bugs at the root cause, not the symptom.
 - **Never write a human step that doesn't run as written** (see Write the rollout).
+- **ATF fix rules** (a plan with `## ATF fix rules`, read the attachment `ATF failures (<env>)`): classify each failing test first (outdated test, regression, flaky or environmental) and put it in your summary for the record. An outdated test is updated to assert the **same behaviour**: never delete, skip or loosen it, widen a timeout to mask a failure, or change what it checks. Fix a regression in the app only if the cause is clear and small; otherwise leave the test alone and raise a question naming the suspect glob. Rerun a flaky or environmental failure once; if it fails again, report the evidence and change nothing.
 
 ## Modes of operation
 

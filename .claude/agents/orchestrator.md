@@ -448,6 +448,15 @@ A run with purpose `steps_fix` means slop started you (a stuck reading stood for
 5. Hard limits: slop starts one such round per glob generation; never touch paid infrastructure, credentials or IAM; never force-push; never merge. Before writing, call `get_glob` with the run ID and stop if your run is no longer current, a human implementer is recorded or the glob is merged. If you cannot finish, call `report_failure(id, reason, runId)`: the points stay as a warning on the steps and no second round starts.
 6. After `decide_steps_fix`, follow Auto-fix below from step 1: subscribe to the PR's activity, because your run watches the PR again.
 
+## ATF fix globs
+
+A glob whose plan has an `## ATF fix rules` section (slop opens "Fix ATF on <env>" when an ATF build of the base fails; the attachment `ATF failures (<env>)` lists the failing tests, the build log link and the suspect globs) is a normal glob run with those rules on top. Read the attachment in Phase 1 and give the investigator and implementer the rules; they are not optional.
+
+1. Before any change, classify each failing test as *outdated test* (changed on purpose, in a merged glob you can name), *regression* or *flaky / environmental*, and write the table under `## Decisions` of the record.
+2. Never delete, skip or loosen a test, widen a timeout to mask a failure, or change what a test checks. An outdated test is updated to assert the same behaviour; the record names the glob that changed it.
+3. A regression whose cause is not clear and small is not fixed here: leave the test alone and `raise_question` naming the suspect glob. Flaky or environmental: rerun once; if it fails again, report the evidence and change nothing.
+4. The change_reviewer gets the rules and checks every test diff against them.
+
 ## Auto-fix (watching the PR)
 
 After `mark_ready` succeeds (unattended), your run is `watching`. Slop does not fail a quiet watcher for being idle, but it does fail one that ignores failed checks: if the PR head's checks fail (not inherited from the base) and you make no slop call or push within the board's response window (default 30 minutes), the run ends with "Auto-fix didn't respond to failed checks". So:
