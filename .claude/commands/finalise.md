@@ -1,6 +1,6 @@
 ---
 name: finalise
-description: Bring slop up to date for the current glob before its PR is marked ready or merged (implementation record, local review, learnings), then write the completion marker that `sstor --ready` and `sstor --derge` wait for.
+description: Bring slop up to date for the current glob before its PR is marked ready or merged (implementation record, local review, learnings), then write the completion marker that `slop ready` and `slop merge` wait for.
 user_invocable: true
 ---
 
@@ -15,7 +15,7 @@ user_invocable: true
 
 The request ID is the first argument; the options follow it. A value with spaces is quoted.
 
-`sstor --ready` and `sstor --derge` only continue once this has succeeded for the current request and head commit. sstor sends `/finalise <requestId>` to this session itself when the developer runs it from a terminal. When you mark the PR ready yourself, run `/finalise <requestId>` first (generate the ID with `uuidgen`), then call slop's `mark_ready` with the glob ID. Never run `sstor` yourself: it is the developer's terminal tool, it drives this session, and it cannot run inside the sandbox.
+`slop ready` and `slop merge` only continue once this has succeeded for the current request and head commit. The slop CLI sends `/finalise <requestId>` to this session itself when the developer runs it from a terminal. When you mark the PR ready yourself, run `/finalise <requestId>` first (generate the ID with `uuidgen`), then call slop's `mark_ready` with the glob ID. Never run `slop work`, `slop ready` or `slop merge` yourself: they are the developer's terminal commands, they drive this session, and they cannot run inside the sandbox.
 
 ## Instructions
 
@@ -31,4 +31,4 @@ Steps 4–5 push files: send each from its file as the orchestrator's **Uploadin
    <requestId>
    <sha>
    ```
-   If any step failed, do **not** write the marker. Explain what failed; sstor will stop and report instead of marking the PR ready or merging.
+   If any step failed, do **not** write the marker. Explain what failed; the slop CLI will stop and report instead of marking the PR ready or merging.
