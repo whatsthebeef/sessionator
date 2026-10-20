@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart hook: in a cloud/routine session (CLAUDE_CODE_REMOTE set) whose checkout has no node_modules, install the
-# dependencies so lint, typecheck and tests can run before any push: the repo's own executable `.sstor/install.sh` when it
+# dependencies so lint, typecheck and tests can run before any push: the repo's own executable `.slop/install.sh` when it
 # has one, else the pnpm or yarn version pinned in package.json's packageManager, from the frozen lockfile. Time-boxed;
 # prints its result and never fails the session.
 [[ -n "${CLAUDE_CODE_REMOTE:-}" ]] || exit 0
@@ -19,8 +19,8 @@ run() {
     echo "session install: $what failed or timed out (lint, typecheck and tests may not run): $(tail -n 3 "$log" | tr '\n' ' ' | cut -c1-300)"
   fi
 }
-if [[ -x .sstor/install.sh ]]; then
-  run ".sstor/install.sh" .sstor/install.sh
+if [[ -x .slop/install.sh ]]; then
+  run ".slop/install.sh" .slop/install.sh
 elif [[ ! -f package.json ]]; then
   :
 else
@@ -29,7 +29,7 @@ else
     pnpm@*) run "$pm install --frozen-lockfile" npx --yes "$pm" install --frozen-lockfile ;;
     yarn@1.*) run "$pm install --frozen-lockfile" npx --yes "$pm" install --frozen-lockfile ;;
     yarn@*) run "$pm install --immutable" npx --yes "$pm" install --immutable ;;
-    *) echo "session install: packageManager is not pnpm or yarn (${pm:-unset}) and there is no .sstor/install.sh, skipped" ;;
+    *) echo "session install: packageManager is not pnpm or yarn (${pm:-unset}) and there is no .slop/install.sh, skipped" ;;
   esac
 fi
 rm -f "$log"

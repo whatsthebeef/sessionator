@@ -3,7 +3,7 @@
 # (exit 2, the failing lines on stderr) when they fail. Routines and sessions must not push code that fails lint,
 # typecheck or the changed tests; `--no-verify` is refused here too. A person can still bypass it by pushing themselves.
 #
-# Checks: `.sstor/checks.sh <changed files...>` when the repo has it (exit non-zero to block). Otherwise, for a pnpm/npm
+# Checks: `.slop/checks.sh <changed files...>` when the repo has it (exit non-zero to block). Otherwise, for a pnpm/npm
 # workspace: eslint on the changed TS/JS files, `tsc --noEmit` for each changed package that has a tsconfig.json, and
 # vitest for each changed test file.
 input=$(cat)
@@ -27,8 +27,8 @@ trap 'rm -f "$out"' EXIT
 fail=0
 run() { "$@" >>"$out" 2>&1 || { fail=1; echo "FAILED: $*" >>"$out"; }; }
 
-if [[ -x .sstor/checks.sh ]]; then
-  run .sstor/checks.sh "${changed[@]}"
+if [[ -x .slop/checks.sh ]]; then
+  run .slop/checks.sh "${changed[@]}"
 else
   mapfile -t code < <(printf '%s\n' "${changed[@]}" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$')
   [[ ${#code[@]} -gt 0 ]] && run npx eslint "${code[@]}"

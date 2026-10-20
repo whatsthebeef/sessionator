@@ -148,7 +148,7 @@ Search with `search_text(board, query, mode?, from?, to?, glob?, group?, sourceT
 
 ## Server URL and browser testing
 
-If `.sstor/.url` exists it holds the local dev server URL. When passing it to sub-agents, include:
+If `.slop/.url` exists it holds the local dev server URL. When passing it to sub-agents, include:
 
 > **Browser testing**: The local dev server is running at `<url>`. Use `mcp__chrome-devtools__new_page` to open a new Chrome tab at this URL and the Chrome DevTools MCP tools to interact with the page, inspect the DOM, read console messages and verify behaviour visually. If you need credentials, check the console output or (interactive sessions only) ask the user with `AskUserQuestion`.
 
@@ -384,7 +384,7 @@ Phase 5 always runs. The maximum rounds depend on the risk tier: **high** 3, **n
    - `fact`: how the system is now, after this glob changed architecture or operations (new or moved modules, tables, services, data flows, deploy or ops steps). Submit one per change, stating the new description so it can replace the outdated one, with evidence naming the files and the commit, and suggestedTarget the matching architecture or operations document. Skip it when nothing of the kind changed.
    - **After a fanned-out run**, submit one `agent-behaviour` learning (agent: orchestrator or investigator; suggestedTarget `risk_and_size`) when the cut itself was wrong: two workstreams that should have been one (they conflicted at integration), a file that needed an owner and had none, or a fan-out that cost more than it saved. Name the glob, the workstreams and the files, from the record's `workstreams` block. A clean fan-out needs no learning.
 
-   Skip trivial or glob-specific details; most globs produce 0–3. For each, call `submit_learning(board, sourceGlobId: id, type, statement, evidence, suggestedTarget?)`, with evidence naming the glob, the files and the findings or failures behind it. Never edit `.sstor/docs/`, `.claude/` or any knowledge directly: slop deduplicates, drafts the change and queues it for human approval.
+   Skip trivial or glob-specific details; most globs produce 0–3. For each, call `submit_learning(board, sourceGlobId: id, type, statement, evidence, suggestedTarget?)`, with evidence naming the glob, the files and the findings or failures behind it. Never edit `.slop/docs/`, `.claude/` or any knowledge directly: slop deduplicates, drafts the change and queues it for human approval.
 9. **Push and mark ready:**
    - **Unattended:** merge `<base>` once more (Hard rules), run the pre-push check, push the record (`put_artifact(id, kind: 'implementation_plan', content: <record file>, commitSha: <HEAD sha>)`, with the run ID), `git push origin <id>`, then call `mark_ready` with the glob ID and your run ID; slop marks the draft PR ready through its GitHub App. Do not use `gh` or open a PR, and do not change the PR title (already `<id>: <title>`). The run is not finished until `mark_ready` succeeds.
      - **If `mark_ready` refuses because the branch conflicts with `<base>`**, the PR is still a draft and no checks run: do step 5 again (renumbering migrations where the build doc says to), run the fast checks, apply the pre-push check, push, and call `mark_ready` again. If you can't resolve it with confidence, `git merge --abort` and call `report_failure`.
@@ -483,7 +483,7 @@ The input is a **glob ID** or a **commit SHA**. Do **not** modify any code.
 
 1. **Context.**
    - **Glob ID** (matches `s<digits><letter><digits>`): `get_glob(id)` and `get_context(id)`, fetch the board knowledge, then `git fetch origin <id> <base>` and review `origin/<base>...origin/<id>`. If the branch no longer exists (merged and deleted), find the squash commit with `git log origin/<base> --grep='^<id>: '` and review that. Write `.reviews/<id>-context.md` with the glob details, plan.md and the commit summary.
-   - **Commit SHA** (hex): verify it with `git cat-file -t <sha>` (if missing, **stop and report the error**), use `id = review-<short-sha>` (first 8 chars), and write `.reviews/<id>-context.md` from `git show --stat <sha>`. If the message starts with a glob ID, also fetch that glob's context. Fetch the knowledge for the board in `.sstor/sstor.conf` (`SLOP_BOARD`).
+   - **Commit SHA** (hex): verify it with `git cat-file -t <sha>` (if missing, **stop and report the error**), use `id = review-<short-sha>` (first 8 chars), and write `.reviews/<id>-context.md` from `git show --stat <sha>`. If the message starts with a glob ID, also fetch that glob's context. Fetch the knowledge for the board in `.slop/slop.conf` (`SLOP_BOARD`).
 2. **Code review.** Invoke the **change_reviewer** in `standalone_review` mode with the context, the diff, every board doc whose audience includes it, the build doc, the base branch and the server URL if any. It writes `.reviews/<id>-review.md` and also runs the build, test, lint and dependency checks from the build doc.
 3. **Report.** When keyed by a glob, push the review with `put_artifact(id, kind: 'local_review', content, commitSha)`. Summarise for the developer: in-scope items and suggestions, build/test/lint results, dependency warnings, and the verdict (APPROVED / CHANGES_REQUIRED).
 
