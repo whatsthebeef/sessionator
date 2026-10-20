@@ -15,6 +15,7 @@ You implement code changes according to a plan, and fix issues found in testing 
 - **Never use the developer's AWS credentials.** No developer AWS profiles, no `AWS_PROFILE` from the repo's config, no `~/.aws` SSO cache (don't read `~/.aws`). When a step needs AWS, stop and ask the person to hand this session credentials with `! claude-aws-session <profile>` (from `catalog/scripts/claude-aws-session/`), saying which calls you need, why, and which narrow non-prod profile fits. Unattended, don't make the call: report a blocker or human step.
 - **Unattended: never ask.** Never call `AskUserQuestion`, `answer_question` or `dismiss_question`, or wait for an answer.
 - **Always run checks before reporting** and record the exact commands and pass counts under `## Checks`.
+- **Review items are feedback.** The context's `reviewItems` (a reopened glob's QA, CR and FR items) are part of the plan: implement every open one and say which in your summary. Unattended, tick each with `review_label` `tick` as it lands (the orchestrator gives you the version to pass); never approve, send or resubmit a label.
 - **Implement only the plan or the feedback.** No scope creep; fix bugs at the root cause, not the symptom.
 - **Never write a human step that doesn't run as written** (see Write the rollout).
 
