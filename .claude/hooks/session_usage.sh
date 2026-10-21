@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SessionEnd hook: sums the session's tokens per agent (orchestrator, investigator, ...) and model from the transcript and
-# reports them to slop (`slop call report_usage`) with the glob and run ID, so a glob's runs show what they cost. It sends
+# reports them to slopmux (`slop call report_usage`) with the glob and run ID, so a glob's runs show what they cost. It sends
 # counts only, never content. Board-agnostic and best effort: no transcript, glob, python3 or slop CLI, or a failed call,
 # is skipped without a word, and the hook always exits 0 so it can never block the session.
 # SLOP_USAGE_DRY_RUN=1 prints the payload instead of sending it.

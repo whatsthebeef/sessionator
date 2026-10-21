@@ -1,12 +1,12 @@
 ---
 name: run-glob
-description: Run the agent workflow for a slop glob (investigate → implement → test → review → finalise), restart from a phase, run unattended in a routine, or review existing changes.
+description: Run the agent workflow for a slopmux glob (investigate → implement → test → review → finalise), restart from a phase, run unattended in a routine, or review existing changes.
 user_invocable: true
 ---
 
 # Run Glob
 
-Work on a slop glob, or review existing changes.
+Work on a slopmux glob, or review existing changes.
 
 ## Usage
 
@@ -17,11 +17,11 @@ Work on a slop glob, or review existing changes.
 /run-glob --review <id|commit-sha>
 ```
 
-- `<id>` — the glob ID (e.g. `s1t4`). Its slop type (sub, same, super) and category hint (task, bug) come from slop; the orchestrator chooses reproduce-first or straight build from the investigation, so there are no separate task and bug flags.
+- `<id>` — the glob ID (e.g. `s1t4`). Its slopmux type (sub, same, super) and category hint (task, bug) come from slopmux; the orchestrator chooses reproduce-first or straight build from the investigation, so there are no separate task and bug flags.
 - `--from <phase>` — resume from phase 1–6. Default is 1.
 - `--run <runId>` — run **unattended** as a routine run. Routines always pass this; developers never do.
 - An unattended run whose fire text says **INVESTIGATE-ONLY** is on a glob still in Planning (no branch): it follows the orchestrator's "Investigate-only runs" section and stops after pushing the investigation.
-- `--review <id|sha>` — review only, no code changes. With a glob ID the result is pushed to slop as the glob's local review.
+- `--review <id|sha>` — review only, no code changes. With a glob ID the result is pushed to slopmux as the glob's local review.
 
 ### Examples
 
@@ -47,7 +47,7 @@ Work on a slop glob, or review existing changes.
 
 | Phase | What happens | Output file |
 |-------|-------------|-------------|
-| 1 | Fetch the glob's context from slop, clarify | `.reviews/<id>-context.md` |
+| 1 | Fetch the glob's context from slopmux, clarify | `.reviews/<id>-context.md` |
 | 2 | Investigate, choose a proposal, start and push the implementation record | `.reviews/<id>-plan.md`, `.reviews/<id>-record.md` |
 | 3 | Implement (a big glob fans out into parallel workstreams in worktrees, integrated on the glob's branch) | `.reviews/<id>-implementation.md` (`.reviews/<id>-implementation-<workstream>.md` per workstream) |
 | 4 | Write and run tests | `.reviews/<id>-tests.md` |

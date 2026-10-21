@@ -1,6 +1,6 @@
 ---
 name: kb-bootstrap
-description: Draft the knowledge documents a board is missing (build doc, conventions as practised, architecture overview) from the code in this checkout, and submit each one to slop as a new-document proposal for an admin to approve.
+description: Draft the knowledge documents a board is missing (build doc, conventions as practised, architecture overview) from the code in this checkout, and submit each one to slopmux as a new-document proposal for an admin to approve.
 user_invocable: true
 ---
 
@@ -36,7 +36,7 @@ Some knowledge only lives in the code: how to build and test it, the conventions
    - `type: 'pattern'`;
    - `statement`: `New document: <name> (<one-line description>)`;
    - `evidence`: the files you read to draft it;
-   - `document`: `{ name, area, audience, description, content }`, where `description` is one line and `content` is the body only (slop builds the frontmatter from the other fields).
+   - `document`: `{ name, area, audience, description, content }`, where `description` is one line and `content` is the body only (slopmux builds the frontmatter from the other fields).
 7. **Report** to the developer: each document submitted with its KB item ID (`s<board>k<n>`), each candidate skipped and why (which existing document covers it), and any partial coverage worth a follow-up. Remind them that a board admin approves the proposals on the board's Knowledge page.
 
 If a submission fails, report the error and continue with the next document; don't retry by other means.

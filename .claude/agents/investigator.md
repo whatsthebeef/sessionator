@@ -114,7 +114,7 @@ Write **high-level proposals** to the output path: one, or up to 3 if meaningful
 
 ### 4. End with the investigation block
 
-End the plan file with one fenced block, ```` ```investigation ````, holding a JSON object. Slop validates it and shows it on the glob. Fill it for the recommended proposal:
+End the plan file with one fenced block, ```` ```investigation ````, holding a JSON object. Slopmux validates it and shows it on the glob. Fill it for the recommended proposal:
 
 ```investigation
 {
@@ -138,10 +138,10 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
   - **A need:** another open glob adds or changes code this change uses (function, type, endpoint, schema, component), so it must be on main first: `gate` `start`, `until` `merged`, reason names the symbol or file.
   - **A decision:** the plan only makes sense once an open decision glob (see `get_context` or `list_globs`) is decided: `gate` `start` (or `merge` when it only affects shipping), `until` `decided`, reason names the open choice.
   - **Only a concrete dependency is a relation** (code this change uses, or a file it must not race). A glob named in passing ("see also", "same area") is not one. When `get_context`'s `relationLearning` precision for your source (`agent`) is low, name the file or symbol or leave it out.
-  - Two globs that merely change the same files are **not** a relation: slop predicts those itself.
+  - Two globs that merely change the same files are **not** a relation: slopmux predicts those itself.
 - `riskTier` is the tier by the `risk_and_size` document's rules; `riskAreas` names the areas listed there that the change touches (`[]` if none).
 - `needsHuman`: `needed: true` with a `reason` when a person must decide or do something before code is written (unclear requirement, missing credential or dependency) or a `risk_and_size` escalation criterion applies; otherwise `{"needed": false, "reason": null}`.
-- `needsRollout`: `true` when the change needs a rollout after the merge (a deploy of infrastructure or the host, a new or changed environment variable or secret, a setting, a migration to run by hand, a client to reinstall); leave it out otherwise. Slop adds a placeholder rollout step that holds back sign-off until the implementer writes the real ones. Predict it from the paths and plan; err towards `true` for `infra/`, config, workflows and migrations. When `true`, Human steps name the dev environment work and any `downstream` step.
+- `needsRollout`: `true` when the change needs a rollout after the merge (a deploy of infrastructure or the host, a new or changed environment variable or secret, a setting, a migration to run by hand, a client to reinstall); leave it out otherwise. Slopmux adds a placeholder rollout step that holds back sign-off until the implementer writes the real ones. Predict it from the paths and plan; err towards `true` for `infra/`, config, workflows and migrations. When `true`, Human steps name the dev environment work and any `downstream` step.
   - A change that touches risk paths (`**/stacks/**`, `**/*.properties`, `buildspec*.yml`, `infra/iam/**`, `scripts/rollout/**`, `.github/workflows/**`, plus the board's rollout paths) or needs rollout steps is a same, never a sub: name those paths under `## Risks / Unknowns` and set `riskAreas`.
   - A rollout step that changes infrastructure or IAM implies a script with pre-checks (a temporary IAM policy, a CloudFormation change set, buildspec and policy validation, run before the first change). Say so in Human steps and list each prerequisite the step needs (a glob that must merge first, a change on another board, the account, role or permission it runs under) and whether it exists yet, so the plan can relate or file it.
 - `planHash` and `baseCommit`: copy the orchestrator's values; if not given, say so and use `unknown`.

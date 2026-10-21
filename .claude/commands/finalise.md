@@ -1,6 +1,6 @@
 ---
 name: finalise
-description: Bring slop up to date for the current glob before its PR is marked ready or merged (implementation record, local review, learnings), then write the completion marker that `slop ready` and `slop merge` wait for.
+description: Bring slopmux up to date for the current glob before its PR is marked ready or merged (implementation record, local review, learnings), then write the completion marker that `slop ready` and `slop merge` wait for.
 user_invocable: true
 ---
 
@@ -15,7 +15,7 @@ user_invocable: true
 
 The request ID is the first argument; the options follow it. A value with spaces is quoted.
 
-`slop ready` and `slop merge` only continue once this has succeeded for the current request and head commit. The slop CLI sends `/finalise <requestId>` to this session itself when the developer runs it from a terminal. When you mark the PR ready yourself, run `/finalise <requestId>` first (generate the ID with `uuidgen`), then call slop's `mark_ready` with the glob ID. Never run `slop work`, `slop ready` or `slop merge` yourself: they are the developer's terminal commands, they drive this session, and they cannot run inside the sandbox.
+`slop ready` and `slop merge` only continue once this has succeeded for the current request and head commit. The slopmux CLI sends `/finalise <requestId>` to this session itself when the developer runs it from a terminal. When you mark the PR ready yourself, run `/finalise <requestId>` first (generate the ID with `uuidgen`), then call slop's `mark_ready` with the glob ID. Never run `slop work`, `slop ready` or `slop merge` yourself: they are the developer's terminal commands, they drive this session, and they cannot run inside the sandbox.
 
 ## Instructions
 
@@ -25,10 +25,10 @@ The request ID is the first argument; the options follow it. A value with spaces
 Steps 4–5 push files: send each from its file as the orchestrator's **Uploading artifacts** paragraph says (`slop put-artifact --file` locally, `artifact_upload_url` then `curl --data-binary @<file>` in a routine), keeping inline `put_artifact` for small ones.
 4. **Implementation record (every glob type)**: update `.reviews/<id>-record.md` (the format is in the orchestrator's Implementation record section) from the session conversation, `.reviews/<id>-implementation.md` and `git diff <base>...HEAD`, so that it is complete and matches the final code, then `put_artifact(id, kind: 'implementation_plan', content, commitSha: sha)`. Skip if the glob's artifact list already has an `implementation_plan` whose `commitSha` is `sha` (the orchestrator's Phase 6 pushes it for sames and subs), and push it for `sha` if it doesn't. When you write or update the record, end `## What was built` with one line saying which mode ran: `Finalised: learnings=<all|facts|none>` plus `; note: <note>` when one was given.
 5. **Local review**: if the glob's artifact list already has a `local_review` for `sha`, skip this step. Otherwise, if `.reviews/<id>-review.md` exists and covers the current changes, push it (with the test report appended if there is one) as `put_artifact(id, kind: 'local_review', content, commitSha: sha)`. If there is no review for the current changes, run the **change_reviewer** in standard mode for one round, then push its document.
-6. **Learnings**: if `--learnings none` was given, or learnings were already submitted for this glob in this session for `sha`, skip. Otherwise extract them as in the orchestrator's Phase 6 step 8 and call `submit_learning` once per learning, including a `fact` learning per architecture or operations change. With `--learnings facts`, submit only the `fact` learnings (one per architecture or operations change in the diff and the record) and no gotchas or patterns. Slop does not submit learnings after the merge: knowledge comes from this step.
+6. **Learnings**: if `--learnings none` was given, or learnings were already submitted for this glob in this session for `sha`, skip. Otherwise extract them as in the orchestrator's Phase 6 step 8 and call `submit_learning` once per learning, including a `fact` learning per architecture or operations change. With `--learnings facts`, submit only the `fact` learnings (one per architecture or operations change in the diff and the record) and no gotchas or patterns. Slopmux does not submit learnings after the merge: knowledge comes from this step.
 7. **Marker**: only after every call above succeeded, write `.slop/.finalised` containing exactly two lines:
    ```
    <requestId>
    <sha>
    ```
-   If any step failed, do **not** write the marker. Explain what failed; the slop CLI will stop and report instead of marking the PR ready or merging.
+   If any step failed, do **not** write the marker. Explain what failed; the slopmux CLI will stop and report instead of marking the PR ready or merging.
