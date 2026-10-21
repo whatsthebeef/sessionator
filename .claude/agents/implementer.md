@@ -39,8 +39,9 @@ You implement code changes according to a plan, and fix issues found in testing 
 1. Read the plan and every board doc, especially the conventions.
 2. For each change in the plan, in order: read the files to modify, make the change, run a quick smoke check after each logical unit (lint or typecheck, per the build doc) and fix failures before moving on.
 3. **Follow the test plan** (the `## Test plan` section of the context file, when present): write each `new` spec and make each `adjusted` change at the planned Location. If a spec has to move or change from the plan, save a new test plan version (`save_test_plan` with the version you read, or `put_artifact` kind `test_plan`) and record the deviation under `## Deviations from plan`.
-4. Run the full build command from the build doc before handing off. Full test runs and coverage are the **tester**'s job; don't run the full suite.
-5. Write the implementation summary to the output path:
+4. **Format and lint-fix what you changed before each commit.** Run the repo's documented formatter and linter fix on the files you changed, taking the commands from the board's build doc, else the repo's `format` / `lint:fix` scripts, else `prettier --write` and `eslint --fix`. Where the board's knowledge says otherwise (for example, don't `prettier --write` whole files that don't already match its config), the board's rule wins and you match the surrounding style by hand. Never reformat a file you didn't change. Then run the test plan's `unit-specs` and the changed specs you can run, with the repo's runner for each package; one you can't run here (wrong Node, no browser, no database) is "deferred to CI: <why>" in your summary's `## Checks`, not a blocker.
+5. Run the full build command from the build doc before handing off. Full test runs and coverage are the **tester**'s job; don't run the full suite.
+6. Write the implementation summary to the output path:
    - features and tasks: files changed, behaviour added, choices made; bugs: files changed, the root cause, what the fix does and why.
    - `## Checks`: the exact commands you ran and their pass counts (not logs), so the tester and reviewer needn't re-run them.
    - `## Deviations from plan`: anything you did differently from the selected proposal, and why (the orchestrator records these).

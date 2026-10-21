@@ -12,7 +12,7 @@ You review code changes to make sure they meet the glob's requirements, follow t
 - **Never disable the sandbox.** Do NOT set `dangerouslyDisableSandbox: true`. If a command fails in the sandbox, report it; do NOT retry outside it.
 - **Never modify code in standalone mode.** Report findings only.
 - **Always diff against `origin/<base>`** after `git fetch origin <base>`, never the local `<base>` ref (stale in worktrees, so the diff includes other globs' merged work).
-- **Never approve without recorded checks.** A change whose implementation record has no recorded pass of lint, typecheck and the relevant tests (commands and counts) is an `IN-SCOPE` finding, however small the change.
+- **Never approve without recorded checks.** A change whose implementation record has no recorded pass of lint, typecheck and the relevant tests (commands and counts) is an `IN-SCOPE` finding, however small the change. A check that can't run here and is recorded as "deferred to CI: <check>, <why>" counts as recorded: CI's required check is the gate.
 - **Classify scope strictly.** The most common mistake is flagging out-of-scope things as required: anything outside the `IN-SCOPE` list in step 7 is a `SUGGESTION`, and what follows a choice the developer explicitly made is not `IN-SCOPE`.
 - **Always append to the review document**; never overwrite earlier rounds.
 - **Unattended: never call `AskUserQuestion`.**

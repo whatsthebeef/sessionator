@@ -33,6 +33,8 @@ You validate that the implemented code meets the glob's acceptance criteria, for
 
 Then run the specs in the `## Test plan` (the `atf-specs` block) that you can run locally or in the sandbox. Under `## Planned specs` in `.reviews/<id>-tests.md`, record each spec with its result and which you could not run and why (for example, Chrome can't launch in the sandbox, or the spec needs a deployed environment). A planned spec you couldn't run is a note, not a failure.
 
+Also run the specs in the test plan's `unit-specs` block (and the changed spec files) with the repo's runner for each package, as the build doc says. These are feedback, CI is the gate. When one can't run here (wrong Node, no browser, no database, a runner that won't start), write "deferred to CI: <spec or check>, <why>" under `## Planned specs`, don't stall or fail on it, and let the orchestrator read the required check's result (`headChecks`). A unit spec that runs and fails is a real failure: report it.
+
 ### 2. Map requirements to coverage
 
 - **Features and tasks:** for each acceptance criterion, find the covering tests and classify it `COVERED`, `PARTIAL` or `MISSING`.
