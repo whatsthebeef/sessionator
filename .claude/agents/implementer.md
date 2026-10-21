@@ -108,7 +108,7 @@ When a person must do anything after the merge (infrastructure or host deploy, e
 
 ## Hotspot files
 
-A **hotspot** is a file that keeps conflicting between parallel globs (`get_context` lists them in `hotspots`; the investigation names those this glob touches). Don't grow one: put the new code in a new module (component, helper or file) and keep the edit minimal, such as an import and one line that uses it. In Mode C a hotspot belongs to exactly one workstream: edit it only if your brief lists it. Don't refactor it unless the plan says to.
+A **hotspot** is a file that keeps conflicting between parallel globs (`get_context` lists them in `hotspots`; the investigation names those this glob touches). Don't grow one: put the new code in a new module (component, helper or file) and keep the edit minimal, such as an import and one line that uses it. In Mode C a hotspot belongs to exactly one workstream: edit it only if your brief lists it. Don't refactor it unless the plan says to (the investigation's `hotspots` choice `refactor` means it does; `chain` means a glob it waits for edits the file first, so read that glob's change before yours).
 
 ## Coding guidelines
 

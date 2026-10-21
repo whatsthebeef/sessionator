@@ -48,7 +48,12 @@ For every glob:
 For each acceptance criterion, name the files, the functions/classes/components involved and the expected behaviour in code. For a fix, also name the root cause location and the change that fixes it without regressions.
 
 - **Stale descriptions:** under `## Risks / Unknowns`, note which architecture or operations sections of the board's documents (and the spec or guide, if any) this change makes stale, so Phase 6 can submit a `fact` learning for each.
-- **Hotspots:** check `get_context`'s `hotspots` (files that keep conflicting: path, conflicts, globs, merges, size) against the files you plan to touch. Report each hot file with its numbers under `## Risks / Unknowns`. If a refactor glob is open or proposed for it, recommend a start relation on it (`relations`); otherwise recommend a minimal edit with new code in a new module.
+- **Hotspots:** check `get_context`'s `hotspots` (files that keep conflicting) against the files you plan to touch. Each entry has its numbers (`conflicts`, `globs`, `real`, `windowDays`), `conflictsRecent` (the last conflicts: glob, when, `additive` or `real`, and the `regions` that clashed where known), `inFlight` (other open globs naming the file, with status and a plan line) and `refactor` (a refactor of the file that merged inside the window and the `conflictsSince` it; null when none). Choose one option per hot file from that evidence, not from habit:
+  - `minimal`: the conflicts were mostly additive, a burst or one glob's, or nothing else is in flight; make the smallest edit, with new code in a new module, and add nothing to the file's shared regions.
+  - `chain`: another open glob in `inFlight` edits the same regions (or the same lines are in `conflictsRecent` regions): add a start relation on it in `relations` (reason: the file and region) so the edits land one after the other.
+  - `refactor`: the conflicts are real and repeated, and a small split (moving the part this change touches into its own module) fits in this glob's size; add it to the plan's tasks and `files`, and keep the public exports of the hot file unchanged.
+  - `propose`: only a larger split would stop the conflicts (several concerns in one file, `refactor.conflictsSince` above 0 after an earlier split); do the minimal edit here and say in `## Risks / Unknowns` that a refactor should be proposed as its own glob (a non-blocking question or follow-up for the orchestrator to raise). A `refactor` that merged recently with `conflictsSince` 0 means the file has been dealt with: prefer `minimal`.
+  Record each choice in the investigation block's `hotspots` and in `## Risks / Unknowns` with its reason and the numbers you read.
 
 ### 2b. The test plan
 
@@ -122,6 +127,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
   "modules": ["server", "web"],
   "expectedLines": {"min": 40, "max": 120},
   "parts": [{"name": "core", "title": "Add the widget schema and store", "plan": "## Tasks\n- [ ] Add the widget table.\nDone when: widgets can be stored and read back.", "files": ["packages/core/src/x.ts"], "needs": []}],
+  "hotspots": [{"path": "apps/server/src/x.ts", "choice": "minimal | chain | refactor | propose", "reason": "additive conflicts only, nothing else in flight", "conflicts": 4, "globs": 3, "real": 0}],
   "relations": [{"to": "<glob id>", "gate": "start", "until": "merged", "reason": "uses humanSteps() from that glob", "files": ["packages/core/src/x.ts"]}],
   "riskTier": "low | normal | high",
   "riskAreas": [],
@@ -139,6 +145,7 @@ End the plan file with one fenced block, ```` ```investigation ````, holding a J
   - **A decision:** the plan only makes sense once an open decision glob (see `get_context` or `list_globs`) is decided: `gate` `start` (or `merge` when it only affects shipping), `until` `decided`, reason names the open choice.
   - **Only a concrete dependency is a relation** (code this change uses, or a file it must not race). A glob named in passing ("see also", "same area") is not one. When `get_context`'s `relationLearning` precision for your source (`agent`) is low, name the file or symbol or leave it out.
   - Two globs that merely change the same files are **not** a relation: slopmux predicts those itself.
+- `hotspots`: one entry per hotspot file this change touches (from `get_context`'s `hotspots`), with the choice (`minimal`, `chain`, `refactor` or `propose`), a one-line reason that cites the evidence (conflict kinds, regions, an in-flight glob, the earlier refactor), and the `conflicts`, `globs` and `real` numbers you read (give all three or none). Leave the field out when no touched file is hot. A `chain` also appears in `relations`.
 - `riskTier` is the tier by the `risk_and_size` document's rules; `riskAreas` names the areas listed there that the change touches (`[]` if none).
 - `needsHuman`: `needed: true` with a `reason` when a person must decide or do something before code is written (unclear requirement, missing credential or dependency) or a `risk_and_size` escalation criterion applies; otherwise `{"needed": false, "reason": null}`.
 - `needsRollout`: `true` when the change needs a rollout after the merge (a deploy of infrastructure or the host, a new or changed environment variable or secret, a setting, a migration to run by hand, a client to reinstall); leave it out otherwise. Slopmux adds a placeholder rollout step that holds back sign-off until the implementer writes the real ones. Predict it from the paths and plan; err towards `true` for `infra/`, config, workflows and migrations. When `true`, Human steps name the dev environment work and any `downstream` step.
