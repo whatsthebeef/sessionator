@@ -20,7 +20,7 @@ Work on a slopmux glob, or review existing changes.
 - `<id>` — the glob ID (e.g. `s1t4`). Its slopmux type (sub, same, super) and category hint (task, bug) come from slopmux; the orchestrator chooses reproduce-first or straight build from the investigation, so there are no separate task and bug flags.
 - `--from <phase>` — resume from phase 1–6. Default is 1.
 - `--run <runId>` — run **unattended** as a routine run. Routines always pass this; developers never do.
-- An unattended run whose fire text says **INVESTIGATE-ONLY** is on a glob still in Planning (no branch): it follows the orchestrator's "Investigate-only runs" section and stops after pushing the investigation.
+- An unattended run whose fire text says **INVESTIGATE-ONLY** is on a glob still in Planning (no branch): it follows the investigate-only guide (`get_glob`'s `readFirst`) and stops after pushing the investigation.
 - `--review <id|sha>` — review only, no code changes. With a glob ID the result is pushed to slopmux as the glob's local review.
 
 ### Examples
@@ -35,7 +35,7 @@ Work on a slopmux glob, or review existing changes.
 ## Instructions
 
 1. **Parse arguments**: `--from` (default 1), `--run`, `--review`, and the glob ID or SHA. If no identifier was given, ask for it (interactive) or stop with an error (unattended).
-2. **Follow the orchestrator workflow**: read `.claude/agents/orchestrator.md` and follow it directly in this session (do NOT launch it as a sub-agent). Pass the glob ID, the starting phase, the run ID if any, and `mode = review` for `--review`. The orchestrator reads the glob and chooses between the phase pipeline and super mode itself.
+2. **Follow the orchestrator workflow**: read `.claude/agents/orchestrator.md` and follow it directly in this session (do NOT launch it as a sub-agent). Pass the glob ID, the starting phase, the run ID if any, and `mode = review` for `--review`. The orchestrator reads the glob and chooses between the phase pipeline and the super guide itself. For `--review`, also read `.claude/slop/guides/review-only.md` first: slopmux can't know the mode, so it isn't in `readFirst`.
 3. **Report results** when the workflow completes:
    - the glob ID and title;
    - what was done, and whether the PR was marked ready;

@@ -1,0 +1,13 @@
+# Preparing an action
+
+Read this when: a run with purpose `prepare` (an action glob that asked for machine preparation). It adds to `.claude/agents/orchestrator.md`; where the two differ, this guide wins for the run.
+
+A run with purpose `prepare` works on an **action glob** (a person finishes it by doing something: a script run against the live thing, a policy applied, a document filed) that asked for machine preparation. You write what the person will run; the person runs it; slopmux records it. The glob's `actionState` and `preparation` (`record`: `branch`, `artifact` or `attachment`; `rounds`) in `get_glob` say where it stands.
+
+1. Do Phases 1-2: read the plan and the context, and let the investigator say what has to be written and checked. Skip Phase 2b, Phase 5's independent rounds and Phase 6's labels, environments, rollout steps, after-deploy steps and Arm label.
+2. Write the script, policy or document the plan's `## Do this` asks for. A script comes with a dry run (`--check` or `--dry-run`, read-only) and its own pre-checks, and `## Do this` names the exact commands in order, dry run first. Run the board's fast checks on it. **Never run a command that changes paid infrastructure or IAM, and never run the script itself**: you write it for a person to run.
+3. Review it locally: the change_reviewer on the diff (a `branch` record) or a re-read against the plan (an `artifact` or `attachment` record). Fix what it finds yourself.
+4. Keep it where the record says. `branch`: `git fetch origin <id> && git checkout -B <id> origin/<id>`, commit and push only to the action's own branch. `artifact`: stay on the base branch, commit nothing, and store the script with `put_artifact(id, kind: 'rollout_script', label: 'action: <slug>', content, runId)`. `attachment`: stay on the base branch, commit nothing, and attach the document with `attach`.
+5. Call `mark_ready(id, runId)`. That ends the run: the action is then the person's turn (`ready`). Do not call `complete_action`, open a PR yourself or wait for the person.
+6. **A later round starts when the person pressed Failed.** Read the attachment `Action run failed (round N)` first and treat it as in-scope feedback: find why it failed (a wrong path, a missing permission, a check that was too weak), fix that in the same branch, record or document, strengthen the dry run so it would have caught it, and end with `mark_ready` again. Never ask the person to rerun with different output: if you cannot fix it, call `report_failure(id, reason, runId)`.
+7. Your final report names the record kind and the round, lists what the person runs (the commands as written in `## Do this`), and states that nothing was run.
