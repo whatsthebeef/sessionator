@@ -1,6 +1,6 @@
 {
   "board": 16,
-  "version": 27,
+  "version": 94,
   "files": [
     ".claude/agents/change_reviewer.md",
     ".claude/agents/implementer.md",
@@ -10,7 +10,20 @@
     ".claude/commands/finalise.md",
     ".claude/commands/kb-bootstrap.md",
     ".claude/commands/run-glob.md",
-    ".claude/hooks/slop_after_push.sh"
+    ".claude/hooks/session_install.sh",
+    ".claude/hooks/session_usage.sh",
+    ".claude/hooks/slop_after_push.sh",
+    ".claude/settings.json",
+    ".claude/slop/guides/atf-fix.md",
+    ".claude/slop/guides/auto-fix.md",
+    ".claude/slop/guides/escalation.md",
+    ".claude/slop/guides/fan-out.md",
+    ".claude/slop/guides/investigate-only.md",
+    ".claude/slop/guides/prepare-action.md",
+    ".claude/slop/guides/review-only.md",
+    ".claude/slop/guides/steps-fix.md",
+    ".claude/slop/guides/super.md",
+    ".claude/slop/guides/triage.md"
   ],
-  "fetchedAt": "2026-10-12T19:18:20Z"
+  "fetchedAt": "2026-10-22T13:18:56Z"
 }
